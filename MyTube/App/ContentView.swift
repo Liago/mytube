@@ -29,12 +29,12 @@ struct ContentView: View {
             
             // 3. Mini Player Overlay
             if !playerService.currentTitle.isEmpty {
-                MiniPlayerView(isExpanded: $isPlayerExpanded)
+                MiniPlayerView(isExpanded: $playerService.isPlayerPresented)
                     .transition(.move(edge: .bottom))
             }
         }
         .animation(.spring(), value: playerService.currentTitle.isEmpty)
-        .fullScreenCover(isPresented: $isPlayerExpanded) {
+        .fullScreenCover(isPresented: $playerService.isPlayerPresented) {
             PlayerSheetView()
         }
     }

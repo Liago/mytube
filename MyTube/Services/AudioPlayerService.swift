@@ -25,6 +25,9 @@ class AudioPlayerService: ObservableObject {
     @Published var seekRequest: Double?
     @Published var playbackRate: Float = 1.0
     
+    // UI Presentation Trigger
+    @Published var isPlayerPresented: Bool = false
+    
     // Resume Logic
     private var pendingResumeVideoId: String?
     private var pendingResumeProgress: Double?
@@ -165,7 +168,11 @@ class AudioPlayerService: ObservableObject {
         self.coverArtURL = thumbnailURL
         self.currentVideoId = videoId
         self.isPlaying = true
+        self.isPlaying = true
         self.playbackRate = 1.0
+        
+        // Trigger UI Presentation
+        self.isPlayerPresented = true
         
         // Reset Resume State
         self.pendingResumeVideoId = nil

@@ -36,6 +36,11 @@ class VideoStatusManager: ObservableObject {
            let decoded = try? JSONDecoder().decode([String: ChannelStatus].self, from: data) {
             channelStatuses = decoded
         }
+        
+        if let data = UserDefaults.standard.data(forKey: homeSubscriptionsKey),
+           let decoded = try? JSONDecoder().decode(Set<String>.self, from: data) {
+            homeSubscriptions = decoded
+        }
     }
     
     private func saveData() {
@@ -125,5 +130,28 @@ class VideoStatusManager: ObservableObject {
         }
         guard let date = DateUtils.parseISOString(publishedAt) else { return false }
         return date > lastVisit
+    }
+    // MARK: - Home Subscriptions API
+    
+    @Published var homeSubscriptions: Set<String> = []
+    private let homeSubscriptionsKey = "MyTube_HomeSubscriptions"
+    
+    func toggleHomeSubscription(channelId: String) {
+        if homeSubscriptions.contains(channelId) {
+            homeSubscriptions.remove(channelId)
+        } else {
+            homeSubscriptions.insert(channelId)
+        }
+        saveHomeSubscriptions()
+    }
+    
+    func isHomeSubscription(channelId: String) -> Bool {
+        return homeSubscriptions.contains(channelId)
+    }
+    
+    private func saveHomeSubscriptions() {
+        if let encoded = try? JSONEncoder().encode(homeSubscriptions) {
+            UserDefaults.standard.set(encoded, forKey: homeSubscriptionsKey)
+        }
     }
 }

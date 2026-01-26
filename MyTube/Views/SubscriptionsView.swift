@@ -3,6 +3,7 @@ import Combine
 
 struct SubscriptionsView: View {
     @StateObject private var viewModel = SubscriptionsViewModel()
+    @ObservedObject private var videoStatusManager = VideoStatusManager.shared
     
     var body: some View {
         NavigationView {
@@ -61,7 +62,18 @@ struct SubscriptionsView: View {
                                         
                                         Spacer()
                                         
-
+                                        // Home Toggle
+                                        // Home Toggle
+                                        Button(action: {
+                                            videoStatusManager.toggleHomeSubscription(channelId: subscription.snippet.resourceId.channelId ?? "")
+                                        }) {
+                                            let isHome = videoStatusManager.isHomeSubscription(channelId: subscription.snippet.resourceId.channelId ?? "")
+                                            Image(systemName: isHome ? "house.fill" : "house")
+                                                .font(.body)
+                                                .foregroundColor(isHome ? .blue : .gray) // Explicit colors
+                                                .padding(8)
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
                                         
                                         Image(systemName: "chevron.right")
                                             .font(.caption)

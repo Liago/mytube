@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MyPlaylistsView: View {
-    @StateObject var viewModel = HomeViewModel()
+    @StateObject var viewModel = PlaylistsViewModel()
     @ObservedObject var authManager = AuthManager.shared
     
     let columns = [

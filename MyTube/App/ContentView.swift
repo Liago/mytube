@@ -19,7 +19,7 @@ struct ContentView: View {
             
             // 2. Main Application Content (Occludes the player)
             if authManager.isAuthenticated {
-                HomeView()
+                MainTabView()
                     .background(Color(UIColor.systemBackground)) // Solid background is MANDATORY to hide player
                     .padding(.bottom, playerService.currentTitle.isEmpty ? 0 : 60) // Space for mini player
             } else {

@@ -9,11 +9,24 @@ class HomeViewModel: ObservableObject {
     
     private let youtubeService = YouTubeService.shared
     private let videoStatusManager = VideoStatusManager.shared
+    private var allVideos: [PlaylistItem] = []
+    private var cancellables = Set<AnyCancellable>()
+    
+    init() {
+        videoStatusManager.objectWillChange
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.filterVideos()
+                }
+            }
+            .store(in: &cancellables)
+    }
     
     func loadHomeVideos() async {
         isLoading = true
         errorMessage = nil
         videos = []
+        allVideos = []
         
         // 1. Get all subscriptions
         // 2. Filter by "Home" flag
@@ -78,20 +91,29 @@ class HomeViewModel: ObservableObject {
                 }
                 
                 for await channelVideos in group {
-                    self.videos.append(contentsOf: channelVideos)
+                    self.allVideos.append(contentsOf: channelVideos)
                 }
             }
             
             // Sort by date descending
-            self.videos.sort { (item1, item2) -> Bool in
+            self.allVideos.sort { (item1, item2) -> Bool in
                 guard let d1 = item1.snippet.publishedAt, let d2 = item2.snippet.publishedAt else { return false }
                 return d1 > d2
             }
+            
+            filterVideos()
             
         } catch {
             self.errorMessage = error.localizedDescription
         }
         
         isLoading = false
+    }
+    
+    private func filterVideos() {
+        self.videos = self.allVideos.filter { item in
+            let isWatched = videoStatusManager.getStatus(videoId: item.videoId)?.isWatched ?? false
+            return !isWatched
+        }
     }
 }

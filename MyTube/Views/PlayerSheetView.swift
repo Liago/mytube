@@ -135,10 +135,18 @@ struct PlayerSheetView: View {
                 Button(action: {
                     playerService.togglePlayPause()
                 }) {
-                    Image(systemName: playerService.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(.white)
+                    if playerService.isLoadingStream {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(1.5)
+                            .frame(width: 48, height: 48)
+                    } else {
+                        Image(systemName: playerService.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 48))
+                            .foregroundColor(.white)
+                    }
                 }
+                .disabled(playerService.isLoadingStream)
                 
                 // Forward 30
                 Button(action: {

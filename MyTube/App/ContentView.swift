@@ -7,27 +7,15 @@ struct ContentView: View {
     
     var body: some View {
         ZStack(alignment: .bottom) {
-            // 1. YouTube Player (Background Layer)
-            // CRITICAL: Must be fully "visible" to the view hierarchy (no opacity < 0.1, no hidden)
-            // to prevent OS suspension. We rely on the HomeView appearing *over* it.
-            if let videoId = playerService.currentVideoId {
-                YouTubePlayerView(videoId: videoId)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .allowsHitTesting(false) // Pass touches to views above
-                    .ignoresSafeArea() 
-            }
-            
-            // 2. Main Application Content (Occludes the player)
+            // Main Application Content
             if authManager.isAuthenticated {
                 MainTabView()
-                    .background(Color(UIColor.systemBackground)) // Solid background is MANDATORY to hide player
-                    .padding(.bottom, playerService.currentTitle.isEmpty ? 0 : 60) // Space for mini player
+                    .padding(.bottom, playerService.currentTitle.isEmpty ? 0 : 60)
             } else {
                 LoginView()
-                    .background(Color(UIColor.systemBackground))
             }
             
-            // 3. Mini Player Overlay
+            // Mini Player Overlay
             if !playerService.currentTitle.isEmpty {
                 MiniPlayerView(isExpanded: $playerService.isPlayerPresented)
                     .transition(.move(edge: .bottom))
@@ -83,11 +71,17 @@ struct MiniPlayerView: View {
                 Button(action: {
                     playerService.togglePlayPause()
                 }) {
-                    Image(systemName: playerService.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.title2)
-                        .foregroundColor(.primary)
-                        .padding(12)
+                    if playerService.isLoadingStream {
+                        ProgressView()
+                            .padding(12)
+                    } else {
+                        Image(systemName: playerService.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.title2)
+                            .foregroundColor(.primary)
+                            .padding(12)
+                    }
                 }
+                .disabled(playerService.isLoadingStream)
                 
                 // Expand Button (Chevron) - VISUAL CUE
                 Button(action: {

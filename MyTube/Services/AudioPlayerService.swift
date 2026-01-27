@@ -27,7 +27,11 @@ class AudioPlayerService: ObservableObject {
     
     // UI Presentation Trigger
     @Published var isPlayerPresented: Bool = false
-    
+
+    // Cached artwork for NowPlayingInfo (avoids re-downloading every update)
+    private var cachedArtwork: MPMediaItemArtwork?
+    private var cachedArtworkURL: URL?
+
     // Resume Logic
     private var pendingResumeVideoId: String?
     private var pendingResumeProgress: Double?
@@ -62,20 +66,22 @@ class AudioPlayerService: ObservableObject {
         // If we are playing (WebView or Native)
         if isPlaying {
             // 1. Re-assert Audio Session
-            try? AVAudioSession.sharedInstance().setActive(true)
-            
-            // 2. If using WebView (player is nil), we MUST rely on silent audio
+            setupAudioSession()
+
+            // 2. Start a fresh background task to bridge the transition
+            endBackgroundTask()
+            startBackgroundTask()
+
+            // 3. If using WebView (player is nil), we MUST rely on silent audio
             if player == nil {
                 if silentPlayer == nil { setupSilentAudio() }
                 if let sp = silentPlayer, !sp.isPlaying {
-                     sp.play()
-                     print("Silent player forced in background")
+                    sp.play()
+                    print("Silent player forced in background")
                 }
             }
-            
-            // 3. Re-assert Now Playing Info
-            // Sometimes WKWebView pauses momentarily when backgrounding, clearing info.
-            // We put it back.
+
+            // 4. Re-assert Now Playing Info
             updateNowPlayingInfo()
         }
     }
@@ -97,14 +103,30 @@ class AudioPlayerService: ObservableObject {
             guard let self = self, let userInfo = notification.userInfo,
                   let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
-            
+
             if type == .began {
-               // Interrupted
+                print("Audio session interrupted")
+                // Don't set isPlaying = false here; the system paused us,
+                // we want to auto-resume when the interruption ends
             } else if type == .ended {
+                print("Audio session interruption ended")
+                // Re-activate the audio session
+                try? AVAudioSession.sharedInstance().setActive(true)
+
                 if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
                     let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                     if options.contains(.shouldResume) {
-                        self.silentPlayer?.play()
+                        if let player = self.player {
+                            player.play()
+                            player.rate = self.playbackRate
+                        } else {
+                            // WebView mode: restart silent player and signal WebView to resume
+                            if self.silentPlayer == nil { self.setupSilentAudio() }
+                            self.silentPlayer?.play()
+                        }
+                        self.isPlaying = true
+                        self.startBackgroundTask()
+                        self.updateNowPlayingInfo()
                     }
                 }
             }
@@ -165,15 +187,20 @@ class AudioPlayerService: ObservableObject {
         self.currentTitle = title
         self.currentAuthor = author
         self.currentVideoDate = publishedAt
-        self.coverArtURL = thumbnailURL
         self.currentVideoId = videoId
         self.isPlaying = true
-        self.isPlaying = true
         self.playbackRate = 1.0
-        
+
+        // Invalidate artwork cache if thumbnail changed
+        if self.coverArtURL != thumbnailURL {
+            self.coverArtURL = thumbnailURL
+            self.cachedArtwork = nil
+            self.cachedArtworkURL = nil
+        }
+
         // Trigger UI Presentation
         self.isPlayerPresented = true
-        
+
         // Reset Resume State
         self.pendingResumeVideoId = nil
         self.pendingResumeProgress = nil
@@ -294,71 +321,117 @@ class AudioPlayerService: ObservableObject {
 
     func setupRemoteTransportControls() {
         let commandCenter = MPRemoteCommandCenter.shared()
-        
+
+        // Play
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] event in
             guard let self = self else { return .commandFailed }
-            
+
             if let player = self.player {
                 player.play()
+                player.rate = self.playbackRate
             } else {
-                // WebView Mode: We just toggle logic state, View observes it
                 if self.silentPlayer == nil { self.createAndLoadSilentFile() }
                 self.silentPlayer?.play()
             }
-            
+
             self.isPlaying = true
+            self.startBackgroundTask()
             self.updateNowPlayingInfo()
             return .success
         }
-        
+
+        // Pause
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] event in
             guard let self = self else { return .commandFailed }
-            
+
             if let player = self.player {
                 player.pause()
             } else {
-                 self.silentPlayer?.pause()
+                self.silentPlayer?.pause()
             }
-            
+
             self.isPlaying = false
             self.updateNowPlayingInfo()
             return .success
         }
-        
-        // ... (Next/Prev handlers)
+
+        // Skip Backward (15 seconds)
+        commandCenter.skipBackwardCommand.isEnabled = true
+        commandCenter.skipBackwardCommand.preferredIntervals = [15]
+        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            guard let self = self else { return .commandFailed }
+            let newTime = max(0, self.currentTime - 15)
+            self.seek(to: newTime)
+            return .success
+        }
+
+        // Skip Forward (30 seconds)
+        commandCenter.skipForwardCommand.isEnabled = true
+        commandCenter.skipForwardCommand.preferredIntervals = [30]
+        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            guard let self = self else { return .commandFailed }
+            let newTime = min(self.duration, self.currentTime + 30)
+            self.seek(to: newTime)
+            return .success
+        }
+
+        // Lock Screen Scrubber (seek slider)
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self = self,
+                  let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
+            }
+            self.seek(to: positionEvent.positionTime)
+            return .success
+        }
     }
     
     func updateNowPlayingInfo() {
-         // ... (Logic mostly same, just robust check)
-         Task {
-            // ... (Copy existing content)
-            var nowPlayingInfo = [String: Any]()
-            nowPlayingInfo[MPMediaItemPropertyTitle] = currentTitle
-            nowPlayingInfo[MPMediaItemPropertyArtist] = currentAuthor
-            nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
-            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-            if duration > 0 { nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration }
+        var nowPlayingInfo = [String: Any]()
+        nowPlayingInfo[MPMediaItemPropertyTitle] = currentTitle
+        nowPlayingInfo[MPMediaItemPropertyArtist] = currentAuthor
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(playbackRate) : 0.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = Double(playbackRate)
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
+        if duration > 0 { nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration }
 
-            if let coverArtURL = coverArtURL {
-                // ... download image logic ...
-                // Re-implement simplified for snippet
-                 do {
-                    let (data, _) = try await URLSession.shared.data(from: coverArtURL)
+        // Use cached artwork if available
+        if let cached = cachedArtwork {
+            nowPlayingInfo[MPMediaItemPropertyArtwork] = cached
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        } else if let coverArtURL = coverArtURL {
+            // Download artwork once, cache it, then set NowPlayingInfo
+            // Set info immediately without artwork so lock screen is responsive
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+
+            let urlToCache = coverArtURL
+            Task {
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: urlToCache)
                     if let image = UIImage(data: data) {
                         let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                        nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
+                        await MainActor.run {
+                            // Only cache if the URL hasn't changed in the meantime
+                            if self.coverArtURL == urlToCache {
+                                self.cachedArtwork = artwork
+                                self.cachedArtworkURL = urlToCache
+                                // Re-set NowPlayingInfo with artwork
+                                var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                                updatedInfo[MPMediaItemPropertyArtwork] = artwork
+                                MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
+                            }
+                        }
                     }
-                } catch { }
+                } catch {
+                    print("Failed to download artwork: \(error)")
+                }
             }
-            
-             // Resume logic copy ...
-             await MainActor.run {
-                 // Resume logic ...
-                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-             }
-         }
+        } else {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        }
     }
     
     // MARK: - Background Task Handling

@@ -85,3 +85,13 @@ struct ChannelContentDetails: Codable {
 struct RelatedPlaylists: Codable {
     let uploads: String
 }
+
+struct Video: Codable, Identifiable {
+    let id: String
+    let snippet: Snippet
+    let contentDetails: VideoContentDetails
+}
+
+struct VideoContentDetails: Codable {
+    let duration: String
+}

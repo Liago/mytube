@@ -10,12 +10,17 @@ class AudioPlayerService: NSObject, ObservableObject {
 
     // Native AVPlayer - the sole playback engine
     private var player: AVPlayer?
+    private var playerItem: AVPlayerItem?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    private var statusObserver: NSKeyValueObservation?
+    private var errorObserver: NSKeyValueObservation?
+    private var rateObserver: NSKeyValueObservation?
+    private var timeControlObserver: NSKeyValueObservation?
 
-    // Fallback Player (WebView)
+    // Fallback Player (WebView) - DEPRECATED
     @Published var useFallbackPlayer: Bool = false
-    
+
     @Published var isPlaying: Bool = false
     @Published var currentTitle: String = ""
     @Published var currentAuthor: String = ""
@@ -25,9 +30,8 @@ class AudioPlayerService: NSObject, ObservableObject {
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
     @Published var playbackRate: Float = 1.0
-    
-    // Seek Request for Fallback (WebView)
-    @Published var playNext: Bool = false // Placeholder if needed
+
+    @Published var playNext: Bool = false
 
     // UI state
     @Published var isPlayerPresented: Bool = false
@@ -45,12 +49,14 @@ class AudioPlayerService: NSObject, ObservableObject {
     // Progress tracking
     private var progressTimer: AnyCancellable?
 
+    // Track if we need to resume after interruption
+    private var wasPlayingBeforeInterruption: Bool = false
+
     override private init() {
         super.init()
         setupAudioSession()
         setupRemoteTransportControls()
         setupInterruptionHandling()
-        try? AVAudioSession.sharedInstance().setActive(true)
         setupBackgroundHandlers()
     }
 
@@ -59,17 +65,25 @@ class AudioPlayerService: NSObject, ObservableObject {
     private func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            // .longFormAudio non supporta .allowAirPlay (che è implicito o incompatibile)
-            // Rimuoviamo le opzioni che possono causare conflitto (errore -50)
+            // Use .playback category for background audio
+            // .spokenAudio mode is optimized for spoken word content like podcasts
             try session.setCategory(
                 .playback,
-                mode: .default,
-                options: [] // Removed .allowAirPlay and implicitly .longFormAudio
+                mode: .spokenAudio,
+                options: [.allowBluetooth, .allowBluetoothA2DP]
             )
             try session.setActive(true, options: .notifyOthersOnDeactivation)
-            print("Audio session configured for native playback (no special policy)")
+            print("Audio session configured: category=playback, mode=spokenAudio")
         } catch {
             print("Audio session setup failed: \(error)")
+        }
+    }
+
+    private func ensureAudioSessionActive() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            print("Failed to activate audio session: \(error)")
         }
     }
 
@@ -80,9 +94,11 @@ class AudioPlayerService: NSObject, ObservableObject {
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                print("App entered background")
-                self?.handleBackgroundEntry()
+            guard let self = self else { return }
+            print("App entered background - isPlaying: \(self.isPlaying)")
+            if self.isPlaying {
+                self.ensureAudioSessionActive()
+                self.updateNowPlayingInfo()
             }
         }
 
@@ -90,19 +106,30 @@ class AudioPlayerService: NSObject, ObservableObject {
             forName: UIApplication.willEnterForegroundNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                print("App entering foreground")
-                try? AVAudioSession.sharedInstance().setActive(true)
-                self?.syncTimeFromPlayer()
-            }
+            guard let self = self else { return }
+            print("App entering foreground")
+            self.ensureAudioSessionActive()
+            self.syncTimeFromPlayer()
+            self.updateNowPlayingInfo()
         }
-    }
 
-    private func handleBackgroundEntry() {
-        if isPlaying {
-            // Re-assert audio session to ensure iOS keeps us alive
-            setupAudioSession()
-            updateNowPlayingInfo()
+        // Handle route changes (headphones unplugged, etc.)
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let self = self,
+                  let userInfo = notification.userInfo,
+                  let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+
+            if reason == .oldDeviceUnavailable {
+                // Headphones were unplugged - pause playback
+                print("Audio route changed: old device unavailable - pausing")
+                self.player?.pause()
+                self.isPlaying = false
+                self.updateNowPlayingInfo()
+            }
         }
     }
 
@@ -118,25 +145,31 @@ class AudioPlayerService: NSObject, ObservableObject {
                   let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                
-                if type == .began {
-                    print("Audio interrupted")
-                } else if type == .ended {
-                    print("Audio interruption ended")
-                    try? AVAudioSession.sharedInstance().setActive(true)
+            switch type {
+            case .began:
+                print("Audio interruption began")
+                self.wasPlayingBeforeInterruption = self.isPlaying
+                self.isPlaying = false
+                self.updateNowPlayingInfo()
 
-                    if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
-                        let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-                        if options.contains(.shouldResume), let player = self.player {
-                            player.play()
-                            player.rate = self.playbackRate
-                            self.isPlaying = true
-                            self.updateNowPlayingInfo()
-                        }
+            case .ended:
+                print("Audio interruption ended")
+                self.ensureAudioSessionActive()
+
+                if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
+                    let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                    if options.contains(.shouldResume) && self.wasPlayingBeforeInterruption {
+                        print("Resuming playback after interruption")
+                        self.player?.play()
+                        self.player?.rate = self.playbackRate
+                        self.isPlaying = true
+                        self.updateNowPlayingInfo()
                     }
                 }
+                self.wasPlayingBeforeInterruption = false
+
+            @unknown default:
+                break
             }
         }
     }
@@ -144,12 +177,13 @@ class AudioPlayerService: NSObject, ObservableObject {
     // MARK: - Playback
 
     func playVideo(videoId: String, title: String, author: String, thumbnailURL: URL?, publishedAt: String? = nil) {
-        print("Playing video: \(videoId)")
-        // Ensure remote controls are receiving events when playback starts
-        UIApplication.shared.beginReceivingRemoteControlEvents()
-        setupAudioSession()
+        print("=== Starting playback for video: \(videoId) ===")
 
-        // Set UI state immediately so the player sheet is responsive
+        // Ensure remote controls are receiving events
+        UIApplication.shared.beginReceivingRemoteControlEvents()
+        ensureAudioSessionActive()
+
+        // Set UI state immediately
         self.currentTitle = title
         self.currentAuthor = author
         self.currentVideoDate = publishedAt
@@ -160,6 +194,7 @@ class AudioPlayerService: NSObject, ObservableObject {
         self.isPlayerPresented = true
         self.isLoadingStream = true
         self.isPlaying = false
+        self.useFallbackPlayer = false
 
         // Invalidate artwork cache if thumbnail changed
         if self.coverArtURL != thumbnailURL {
@@ -177,12 +212,11 @@ class AudioPlayerService: NSObject, ObservableObject {
            status.progress > 0.05 && status.progress < 0.95 {
             self.pendingResumeVideoId = videoId
             self.pendingResumeProgress = status.progress
+            print("Will resume at \(Int(status.progress * 100))%")
         }
 
         // Stop any current playback
         cleanupPlayer()
-
-        self.useFallbackPlayer = false // Reset fallback flag
         updateNowPlayingInfo()
 
         // Fetch audio stream URL and start native playback
@@ -191,12 +225,15 @@ class AudioPlayerService: NSObject, ObservableObject {
                 let streamURL = try await YouTubeStreamService.shared.getAudioStreamURL(videoId: videoId)
 
                 // Verify we're still supposed to play this video
-                guard self.currentVideoId == videoId else { return }
+                guard self.currentVideoId == videoId else {
+                    print("Video ID changed during stream fetch, aborting")
+                    return
+                }
 
-                // Always use proxy to safely bypass 403 Forbidden by masking User-Agent
-                await self.startProxiedPlayback(remoteURL: streamURL)
-                
+                // Start playback with native AVPlayer
+                self.startNativePlayback(url: streamURL)
                 self.isLoadingStream = false
+
             } catch {
                 print("Stream extraction failed: \(error)")
                 self.isLoadingStream = false
@@ -204,106 +241,11 @@ class AudioPlayerService: NSObject, ObservableObject {
             }
         }
     }
-    
-    /// Determine if we should use the proxy based on file size (>10MB)
-    /// (Method kept for reference but now unused as we proxy everything)
-    private func shouldUseProxy(for url: URL) -> Bool {
-        return true
-    }
-    
-    /// Start playback through local proxy (for large files)
-    private func startProxiedPlayback(remoteURL: URL) async {
-        // Extract expected duration from URL parameter (dur=xxx.xxx)
-        if let urlComponents = URLComponents(url: remoteURL, resolvingAgainstBaseURL: false),
-           let durParam = urlComponents.queryItems?.first(where: { $0.name == "dur" }),
-           let durString = durParam.value,
-           let expectedDuration = Double(durString) {
-            self.duration = expectedDuration
-            print("Duration from URL: \(expectedDuration)s")
-        }
-        
-        // Set up proxy
-        let headers: [String: String] = [
-            "User-Agent": "com.google.android.youtube/19.29.35 (Linux; U; Android 14) gzip",
-            "Referer": "https://www.youtube.com/",
-            "Origin": "https://www.youtube.com",
-            "X-Goog-Visitor-Id": "CgtjZEhZUWt0VGVzayjRzrq3BjIKCgJJVBIEGgAgDw%3D%3D" // Optional, often helps
-        ]
-        
-        do {
-            // Start proxy server if not running
-            if !LocalStreamProxy.shared.isRunning {
-                try await LocalStreamProxy.shared.startServer()
-            }
-            
-            // Configure proxy with remote URL
-            LocalStreamProxy.shared.setRemoteURL(remoteURL, headers: headers)
-            
-            // Give server a moment to be ready
-            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-            
-            guard let localURL = LocalStreamProxy.shared.getLocalURL() else {
-                print("Failed to get local proxy URL")
-                self.startNativePlayback(url: remoteURL) // Fallback to direct
-                return
-            }
-            
-            print("Using local proxy URL: \(localURL)")
-            
-            // Create player with local URL
-            let playerItem = AVPlayerItem(url: localURL)
-            playerItem.preferredForwardBufferDuration = 10.0
-            
-            // Observe status and error for debugging
-            playerItem.addObserver(self, forKeyPath: #keyPath(AVPlayerItem.status), options: [.new], context: nil)
-            playerItem.addObserver(self, forKeyPath: #keyPath(AVPlayerItem.error), options: [.new], context: nil)
-
-            if player == nil {
-                player = AVPlayer(playerItem: playerItem)
-            } else {
-                player?.replaceCurrentItem(with: playerItem)
-            }
-            
-            player?.automaticallyWaitsToMinimizeStalling = true
-            player?.play()
-            player?.rate = playbackRate
-            isPlaying = true
-
-            setupTimeObserver()
-            setupEndObserver()
-            startProgressTracking()
-            updateNowPlayingInfo()
-
-            print("Proxied AVPlayer started for remote URL: \(remoteURL.absoluteString.prefix(100))...")
-            
-        } catch {
-            print("Proxy setup failed: \(error), falling back to direct playback")
-            self.startNativePlayback(url: remoteURL)
-        }
-    }
-
-    /// Enable fallback mode (WebView) - DEPRECATED / DISABLED
-    /// We now rely on the local proxy to handle 403 errors.
-    private func enableFallbackMode() {
-        print("Fallback Mode triggered but DISABLED in favor of Proxy.")
-        // Optionally, we could retry with proxy here if we weren't already using it.
-        // But since we proxy everything now, a failure here is real.
-        Task { @MainActor in
-            self.isPlaying = false
-            self.stop()
-        }
-    }
 
     private func startNativePlayback(url: URL) {
-        // Try to mimic the headers that might be expected for the Android client URL or generic playback
-        let headers: [String: String] = [
-            "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip",
-            "Referer": "https://www.youtube.com/",
-            "Origin": "https://www.youtube.com"
-        ]
-        let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
-        
-        // Extract expected duration from URL parameter (dur=xxx.xxx)
+        print("Starting native playback with URL: \(url.absoluteString.prefix(100))...")
+
+        // Extract duration from URL if available (dur=xxx.xxx parameter)
         if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
            let durParam = urlComponents.queryItems?.first(where: { $0.name == "dur" }),
            let durString = durParam.value,
@@ -311,88 +253,155 @@ class AudioPlayerService: NSObject, ObservableObject {
             self.duration = expectedDuration
             print("Duration from URL: \(expectedDuration)s")
         }
-        
-        // Extract file size from URL for debugging
-        if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
-           let clenParam = urlComponents.queryItems?.first(where: { $0.name == "clen" }),
-           let clenString = clenParam.value,
-           let fileSize = Int(clenString) {
-            let fileSizeMB = Double(fileSize) / 1024.0 / 1024.0
-            print("File size: \(String(format: "%.1f", fileSizeMB))MB")
-        }
-        
-        let playerItem = AVPlayerItem(asset: asset)
-        playerItem.preferredForwardBufferDuration = 10.0  // Increased buffer for stability
-        
-        // Observe status and error for debugging
-        playerItem.addObserver(self, forKeyPath: #keyPath(AVPlayerItem.status), options: [.new], context: nil)
-        playerItem.addObserver(self, forKeyPath: #keyPath(AVPlayerItem.error), options: [.new], context: nil)
 
+        // Configure HTTP headers for YouTube
+        // Using Android client User-Agent to avoid restrictions
+        let headers: [String: String] = [
+            "User-Agent": "com.google.android.youtube/19.29.37 (Linux; U; Android 14; en_US) gzip",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Origin": "https://www.youtube.com",
+            "Referer": "https://www.youtube.com/"
+        ]
+
+        // Create AVURLAsset with custom headers
+        let asset = AVURLAsset(url: url, options: [
+            "AVURLAssetHTTPHeaderFieldsKey": headers
+        ])
+
+        // Create player item
+        let item = AVPlayerItem(asset: asset)
+        item.preferredForwardBufferDuration = 30  // Buffer 30 seconds ahead
+        self.playerItem = item
+
+        // Create or reuse player
         if player == nil {
-            player = AVPlayer(playerItem: playerItem)
+            player = AVPlayer(playerItem: item)
+            // Set audio output to mix with others when needed
+            player?.audiovisualBackgroundPlaybackPolicy = .continuesIfPossible
         } else {
-            player?.replaceCurrentItem(with: playerItem)
+            player?.replaceCurrentItem(with: item)
         }
-        
-        // Enable automatic waiting for proper buffering
-        player?.automaticallyWaitsToMinimizeStalling = true
 
+        // Configure player for background playback
+        player?.automaticallyWaitsToMinimizeStalling = true
+        player?.allowsExternalPlayback = true
+
+        // Setup observers
+        setupItemObservers(for: item)
+        setupTimeObserver()
+        setupEndObserver()
+        startProgressTracking()
+
+        // Start playback
         player?.play()
         player?.rate = playbackRate
         isPlaying = true
 
-        setupTimeObserver()
-        setupEndObserver()
-        startProgressTracking()
         updateNowPlayingInfo()
-
-        print("Native AVPlayer started for URL: \(url.absoluteString)")
+        print("Native AVPlayer started successfully")
     }
-    
-    // KVO for AVPlayerItem debugging
-    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
-        guard let playerItem = object as? AVPlayerItem else { return }
-        
-        if keyPath == #keyPath(AVPlayerItem.status) {
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                switch playerItem.status {
-                case .readyToPlay:
-                    print("AVPlayerItem: Ready to play - ensuring playback")
-                    // Ensure playback is active when item becomes ready
-                    if self.isPlaying && self.player?.rate == 0 {
-                        self.player?.play()
-                        self.player?.rate = self.playbackRate
-                    }
-                case .failed:
-                    print("AVPlayerItem: Failed. Error: \(String(describing: playerItem.error))")
-                    if let error = playerItem.error as NSError? {
-                        print("Error stats: \(error.userInfo)")
-                        
-                        // Check for 403 Forbidden or other fatal errors
-                        if let underlyingError = error.userInfo[NSUnderlyingErrorKey] as? NSError {
-                            if underlyingError.code == -12660 { // HTTP 403
-                                print("AVPlayerItem: 403 Forbidden detected. Switching to Fallback Player.")
-                                self.enableFallbackMode()
-                                return
-                            }
-                        }
-                    }
-                    self.isPlaying = false
-                    self.isLoadingStream = false
-                case .unknown:
-                    print("AVPlayerItem: Unknown status")
-                @unknown default:
-                    break
+
+    private func setupItemObservers(for item: AVPlayerItem) {
+        // Remove old observers
+        statusObserver = nil
+        errorObserver = nil
+        rateObserver = nil
+        timeControlObserver = nil
+
+        // Observe item status
+        statusObserver = item.observe(\.status, options: [.new, .initial]) { [weak self] item, _ in
+            DispatchQueue.main.async {
+                self?.handleItemStatusChange(item)
+            }
+        }
+
+        // Observe item error
+        errorObserver = item.observe(\.error, options: [.new]) { [weak self] item, _ in
+            if let error = item.error {
+                DispatchQueue.main.async {
+                    self?.handlePlaybackError(error)
                 }
             }
         }
-        
-        if keyPath == #keyPath(AVPlayerItem.error) {
-             if let error = playerItem.error {
-                 print("AVPlayerItem: Error observed: \(error)")
-             }
+
+        // Observe player rate changes
+        if let player = player {
+            rateObserver = player.observe(\.rate, options: [.new]) { [weak self] player, _ in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    let newIsPlaying = player.rate > 0
+                    if self.isPlaying != newIsPlaying {
+                        self.isPlaying = newIsPlaying
+                        self.updateNowPlayingInfo()
+                    }
+                }
+            }
+
+            // Observe time control status for stalling detection
+            timeControlObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    switch player.timeControlStatus {
+                    case .playing:
+                        print("Player: Playing")
+                        self.isPlaying = true
+                    case .paused:
+                        print("Player: Paused")
+                        // Don't update isPlaying here - it might be intentional pause
+                    case .waitingToPlayAtSpecifiedRate:
+                        print("Player: Buffering...")
+                    @unknown default:
+                        break
+                    }
+                }
+            }
         }
+    }
+
+    private func handleItemStatusChange(_ item: AVPlayerItem) {
+        switch item.status {
+        case .readyToPlay:
+            print("AVPlayerItem: Ready to play")
+            // Ensure playback is active
+            if isPlaying && player?.rate == 0 {
+                player?.play()
+                player?.rate = playbackRate
+            }
+            // Update duration if available from item
+            if let dur = item.duration.seconds, dur.isFinite && dur > 0 {
+                if duration == 0 || dur < duration {
+                    duration = dur
+                }
+            }
+
+        case .failed:
+            print("AVPlayerItem: Failed")
+            handlePlaybackError(item.error)
+
+        case .unknown:
+            print("AVPlayerItem: Unknown status")
+
+        @unknown default:
+            break
+        }
+    }
+
+    private func handlePlaybackError(_ error: Error?) {
+        guard let error = error as NSError? else { return }
+        print("Playback error: \(error.localizedDescription)")
+        print("Error details: \(error.userInfo)")
+
+        // Check for specific errors
+        if let underlyingError = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+            print("Underlying error: \(underlyingError)")
+            if underlyingError.code == -12660 { // HTTP 403
+                print("HTTP 403 Forbidden - stream URL may have expired")
+            }
+        }
+
+        isPlaying = false
+        isLoadingStream = false
     }
 
     private func setupTimeObserver() {
@@ -405,40 +414,37 @@ class AudioPlayerService: NSObject, ObservableObject {
         timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self = self else { return }
 
-            Task { @MainActor in
-                let seconds = time.seconds
-                guard !seconds.isNaN else { return }
+            let seconds = time.seconds
+            guard seconds.isFinite else { return }
 
-                self.currentTime = seconds
+            self.currentTime = seconds
 
-                if let dur = self.player?.currentItem?.duration.seconds, !dur.isNaN {
-                    // Only update duration if we don't have one from the URL,
-                    // or if player duration is smaller (indicating URL duration was wrong)
-                    if self.duration == 0 || dur < self.duration {
-                        self.duration = dur
-                    }
-
-                    // Handle pending resume (seek to saved position once duration is known)
-                    let effectiveDuration = self.duration > 0 ? self.duration : dur
-                    if !self.hasResumed,
-                       let resumeVideoId = self.pendingResumeVideoId,
-                       resumeVideoId == self.currentVideoId,
-                       let progress = self.pendingResumeProgress {
-                        self.hasResumed = true
-                        let seekTime = effectiveDuration * progress
-                        let cmTime = CMTime(seconds: seekTime, preferredTimescale: 600)
-                        self.player?.seek(to: cmTime)
-                        self.currentTime = seekTime
-                        self.pendingResumeVideoId = nil
-                        self.pendingResumeProgress = nil
-                        print("Resumed at \(seekTime)s (\(Int(progress * 100))%)")
-                    }
+            if let dur = self.player?.currentItem?.duration.seconds, dur.isFinite && dur > 0 {
+                // Update duration from player if we don't have it or player's is more accurate
+                if self.duration == 0 || dur < self.duration {
+                    self.duration = dur
                 }
 
-                // Sync NowPlaying info every 5 seconds to correct lock screen drift
-                if Int(seconds) % 5 == 0 {
-                    self.updateNowPlayingInfo()
+                // Handle pending resume
+                let effectiveDuration = self.duration > 0 ? self.duration : dur
+                if !self.hasResumed,
+                   let resumeVideoId = self.pendingResumeVideoId,
+                   resumeVideoId == self.currentVideoId,
+                   let progress = self.pendingResumeProgress {
+                    self.hasResumed = true
+                    let seekTime = effectiveDuration * progress
+                    let cmTime = CMTime(seconds: seekTime, preferredTimescale: 600)
+                    self.player?.seek(to: cmTime)
+                    self.currentTime = seekTime
+                    self.pendingResumeVideoId = nil
+                    self.pendingResumeProgress = nil
+                    print("Resumed playback at \(seekTime)s (\(Int(progress * 100))%)")
                 }
+            }
+
+            // Update NowPlayingInfo every 5 seconds
+            if Int(seconds) % 5 == 0 {
+                self.updateNowPlayingInfo()
             }
         }
     }
@@ -454,25 +460,28 @@ class AudioPlayerService: NSObject, ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self = self else { return }
-            Task { @MainActor in
-                self.isPlaying = false
-                self.updateNowPlayingInfo()
-                self.stopProgressTracking()
+            print("Playback ended")
+            self.isPlaying = false
+            self.updateNowPlayingInfo()
+            self.stopProgressTracking()
 
-                // Mark video as fully watched
-                if let videoId = self.currentVideoId, self.duration > 0 {
-                    VideoStatusManager.shared.saveProgress(
-                        videoId: videoId,
-                        progress: self.duration,
-                        duration: self.duration
-                    )
-                }
-                print("Playback ended")
+            // Mark video as fully watched
+            if let videoId = self.currentVideoId, self.duration > 0 {
+                VideoStatusManager.shared.saveProgress(
+                    videoId: videoId,
+                    progress: self.duration,
+                    duration: self.duration
+                )
             }
         }
     }
 
     private func cleanupPlayer() {
+        statusObserver = nil
+        errorObserver = nil
+        rateObserver = nil
+        timeControlObserver = nil
+
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
             timeObserver = nil
@@ -481,19 +490,16 @@ class AudioPlayerService: NSObject, ObservableObject {
             NotificationCenter.default.removeObserver(observer)
             endObserver = nil
         }
+
         player?.pause()
         player?.replaceCurrentItem(with: nil)
-        // deliberately NOT stopping progress tracking here if switching to fallback,
-        // but since cleanupPlayer is called before switch, we handle it carefully.
-        // Actually, fallback has its own progress flow.
+        playerItem = nil
         stopProgressTracking()
     }
 
     func stop() {
         cleanupPlayer()
         player = nil
-        
-        LocalStreamProxy.shared.stopServer()
 
         isPlaying = false
         useFallbackPlayer = false
@@ -505,7 +511,7 @@ class AudioPlayerService: NSObject, ObservableObject {
         duration = 0
         playbackRate = 1.0
 
-        // Clear now playing info and set state to stopped
+        // Clear now playing info
         let nowPlayingCenter = MPNowPlayingInfoCenter.default()
         nowPlayingCenter.playbackState = .stopped
         nowPlayingCenter.nowPlayingInfo = nil
@@ -514,10 +520,11 @@ class AudioPlayerService: NSObject, ObservableObject {
     func togglePlayPause() {
         guard let player = player else { return }
 
-        if player.timeControlStatus == .playing {
+        if player.timeControlStatus == .playing || player.rate > 0 {
             player.pause()
             isPlaying = false
         } else {
+            ensureAudioSessionActive()
             player.play()
             player.rate = playbackRate
             isPlaying = true
@@ -534,9 +541,9 @@ class AudioPlayerService: NSObject, ObservableObject {
     }
 
     func seek(to time: Double) {
-        let clampedTime = max(0, min(time, duration))
+        let clampedTime = max(0, min(time, duration > 0 ? duration : .greatestFiniteMagnitude))
         let cmTime = CMTime(seconds: clampedTime, preferredTimescale: 600)
-        player?.seek(to: cmTime)
+        player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
         self.currentTime = clampedTime
         updateNowPlayingInfo()
     }
@@ -544,29 +551,35 @@ class AudioPlayerService: NSObject, ObservableObject {
     // MARK: - Remote Transport Controls (Lock Screen / Control Center)
 
     private func setupRemoteTransportControls() {
-        // Essential for Lock Screen / Dynamic Island controls to appear
         UIApplication.shared.beginReceivingRemoteControlEvents()
-        
+
         let commandCenter = MPRemoteCommandCenter.shared()
 
-        // Play
+        // Disable all commands first, then enable only what we need
+        commandCenter.nextTrackCommand.isEnabled = false
+        commandCenter.previousTrackCommand.isEnabled = false
+
+        // Play Command
         commandCenter.playCommand.isEnabled = true
+        commandCenter.playCommand.removeTarget(nil)
         commandCenter.playCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self = self, let player = self.player else { return }
-                player.play()
-                player.rate = self.playbackRate
+            guard let self = self else { return .commandFailed }
+            DispatchQueue.main.async {
+                self.ensureAudioSessionActive()
+                self.player?.play()
+                self.player?.rate = self.playbackRate
                 self.isPlaying = true
                 self.updateNowPlayingInfo()
             }
             return .success
         }
 
-        // Pause
+        // Pause Command
         commandCenter.pauseCommand.isEnabled = true
+        commandCenter.pauseCommand.removeTarget(nil)
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
+            guard let self = self else { return .commandFailed }
+            DispatchQueue.main.async {
                 self.player?.pause()
                 self.isPlaying = false
                 self.updateNowPlayingInfo()
@@ -574,12 +587,24 @@ class AudioPlayerService: NSObject, ObservableObject {
             return .success
         }
 
+        // Toggle Play/Pause (for headphone button)
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.removeTarget(nil)
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            DispatchQueue.main.async {
+                self.togglePlayPause()
+            }
+            return .success
+        }
+
         // Skip Backward (15 seconds)
         commandCenter.skipBackwardCommand.isEnabled = true
         commandCenter.skipBackwardCommand.preferredIntervals = [15]
+        commandCenter.skipBackwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
+            guard let self = self else { return .commandFailed }
+            DispatchQueue.main.async {
                 self.seek(to: self.currentTime - 15)
             }
             return .success
@@ -588,92 +613,125 @@ class AudioPlayerService: NSObject, ObservableObject {
         // Skip Forward (30 seconds)
         commandCenter.skipForwardCommand.isEnabled = true
         commandCenter.skipForwardCommand.preferredIntervals = [30]
+        commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipForwardCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
+            guard let self = self else { return .commandFailed }
+            DispatchQueue.main.async {
                 self.seek(to: self.currentTime + 30)
             }
             return .success
         }
 
-        // Lock Screen Scrubber (seek slider)
+        // Seek bar (change playback position)
         commandCenter.changePlaybackPositionCommand.isEnabled = true
+        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let self = self,
                   let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
                 return .commandFailed
             }
-            Task { @MainActor [weak self] in
-                self?.seek(to: positionEvent.positionTime)
+            DispatchQueue.main.async {
+                self.seek(to: positionEvent.positionTime)
             }
             return .success
         }
+
+        print("Remote transport controls configured")
     }
-    
+
     // MARK: - Now Playing Info
 
     func updateNowPlayingInfo() {
-        print("Updating NowPlayingInfo: Title=\(currentTitle), Rate=\(playbackRate), Time=\(currentTime)")
-        
         let nowPlayingCenter = MPNowPlayingInfoCenter.default()
-        
-        // Set the playback state explicitly - CRITICAL for Lock Screen and Dynamic Island
+
+        // Set playback state - CRITICAL for Lock Screen display
         nowPlayingCenter.playbackState = isPlaying ? .playing : .paused
-        
+
         var info = [String: Any]()
-        info[MPMediaItemPropertyTitle] = currentTitle
+
+        // Basic metadata
+        info[MPMediaItemPropertyTitle] = currentTitle.isEmpty ? "Loading..." : currentTitle
         info[MPMediaItemPropertyArtist] = currentAuthor
-        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(playbackRate) : 0.0
-        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = Double(playbackRate)
+        info[MPMediaItemPropertyAlbumTitle] = "YouTube"
+
+        // Playback info
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-        // info[MPMediaItemPropertyMediaType] = NSNumber(value: MPMediaType.podcast.rawValue) // Removed to ensure standard compatibility
-        
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(playbackRate) : 0.0
+        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+
+        // Duration
         if duration > 0 {
             info[MPMediaItemPropertyPlaybackDuration] = duration
         }
 
-        if let cached = cachedArtwork {
-            info[MPMediaItemPropertyArtwork] = cached
-            nowPlayingCenter.nowPlayingInfo = info
-        } else if let coverArtURL = coverArtURL {
-            // Set info immediately with placeholder while downloading
-            info[MPMediaItemPropertyArtwork] = getPlaceholderArtwork()
-            nowPlayingCenter.nowPlayingInfo = info
+        // Media type (audio)
+        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        info[MPNowPlayingInfoPropertyIsLiveStream] = false
 
-            let urlToCache = coverArtURL
-            Task {
-                do {
-                    let (data, _) = try await URLSession.shared.data(from: urlToCache)
-                    if let image = UIImage(data: data) {
-                        let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                        await MainActor.run {
-                            if self.coverArtURL == urlToCache {
-                                self.cachedArtwork = artwork
-                                self.cachedArtworkURL = urlToCache
-                                var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-                                updatedInfo[MPMediaItemPropertyArtwork] = artwork
-                                MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
-                            }
-                        }
-                    }
-                } catch {
-                    print("Artwork download failed: \(error)")
-                }
-            }
+        // Artwork
+        if let cached = cachedArtwork, cachedArtworkURL == coverArtURL {
+            info[MPMediaItemPropertyArtwork] = cached
         } else {
-            // Always provide an artwork, otherwise Lock Screen might hide the player
             info[MPMediaItemPropertyArtwork] = getPlaceholderArtwork()
-            nowPlayingCenter.nowPlayingInfo = info
+
+            // Download artwork asynchronously
+            if let artworkURL = coverArtURL, artworkURL != cachedArtworkURL {
+                downloadArtwork(from: artworkURL)
+            }
+        }
+
+        nowPlayingCenter.nowPlayingInfo = info
+    }
+
+    private func downloadArtwork(from url: URL) {
+        let urlToDownload = url
+        Task.detached(priority: .userInitiated) {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: urlToDownload)
+                guard let image = UIImage(data: data) else { return }
+
+                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+
+                await MainActor.run {
+                    // Verify URL hasn't changed
+                    guard self.coverArtURL == urlToDownload else { return }
+
+                    self.cachedArtwork = artwork
+                    self.cachedArtworkURL = urlToDownload
+
+                    // Update NowPlayingInfo with new artwork
+                    var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                    info[MPMediaItemPropertyArtwork] = artwork
+                    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+                }
+            } catch {
+                print("Artwork download failed: \(error.localizedDescription)")
+            }
         }
     }
-    
+
     private func getPlaceholderArtwork() -> MPMediaItemArtwork {
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 512, height: 512))
+        let size = CGSize(width: 600, height: 600)
+        let renderer = UIGraphicsImageRenderer(size: size)
         let image = renderer.image { ctx in
-            UIColor.darkGray.setFill()
-            ctx.fill(CGRect(x: 0, y: 0, width: 512, height: 512))
+            // Dark gradient background
+            let colors = [UIColor(white: 0.2, alpha: 1.0).cgColor,
+                          UIColor(white: 0.1, alpha: 1.0).cgColor]
+            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                       colors: colors as CFArray,
+                                       locations: [0.0, 1.0])!
+            ctx.cgContext.drawLinearGradient(gradient,
+                                              start: .zero,
+                                              end: CGPoint(x: 0, y: size.height),
+                                              options: [])
+
+            // Music note icon
+            let iconRect = CGRect(x: size.width/2 - 80, y: size.height/2 - 80, width: 160, height: 160)
+            UIColor.white.withAlphaComponent(0.3).setFill()
+            let path = UIBezierPath(roundedRect: iconRect, cornerRadius: 20)
+            path.fill()
         }
-        return MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        return MPMediaItemArtwork(boundsSize: size) { _ in image }
     }
 
     // MARK: - Progress Tracking
@@ -693,27 +751,33 @@ class AudioPlayerService: NSObject, ObservableObject {
     }
 
     private func saveCurrentProgress() {
-        guard let videoId = currentVideoId, isPlaying,
+        guard let videoId = currentVideoId,
               let player = player,
-              let dur = player.currentItem?.duration.seconds,
-              dur > 0 else { return }
+              let item = player.currentItem,
+              item.duration.seconds.isFinite,
+              item.duration.seconds > 0 else { return }
 
         let pos = player.currentTime().seconds
-        guard !pos.isNaN else { return }
+        guard pos.isFinite else { return }
 
+        let dur = item.duration.seconds
         VideoStatusManager.shared.saveProgress(videoId: videoId, progress: pos, duration: dur)
     }
 
-    /// Sync published time/duration from AVPlayer (useful on foreground return)
+    /// Sync published time/duration from AVPlayer
     private func syncTimeFromPlayer() {
         guard let player = player else { return }
         let seconds = player.currentTime().seconds
-        if !seconds.isNaN {
+        if seconds.isFinite {
             self.currentTime = seconds
         }
-        if let dur = player.currentItem?.duration.seconds, !dur.isNaN {
+        if let dur = player.currentItem?.duration.seconds, dur.isFinite {
             self.duration = dur
         }
+
+        // Update isPlaying based on actual player state
+        self.isPlaying = player.rate > 0
+
         updateNowPlayingInfo()
     }
 }

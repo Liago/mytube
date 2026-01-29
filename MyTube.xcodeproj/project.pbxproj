@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		534E92BF2F2917AD00ED0453 /* YouTubeKit in Frameworks */ = {isa = PBXBuildFile; productRef = 534E92BE2F2917AD00ED0453 /* YouTubeKit */; };
 		53A70A012F1E6E5C004B4689 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 53A70A002F1E6E5C004B4689 /* GoogleSignIn */; };
 		53A70A032F1E6E5C004B4689 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 53A70A022F1E6E5C004B4689 /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
@@ -43,6 +44,7 @@
 			files = (
 				53A70A012F1E6E5C004B4689 /* GoogleSignIn in Frameworks */,
 				53A70A032F1E6E5C004B4689 /* GoogleSignInSwift in Frameworks */,
+				534E92BF2F2917AD00ED0453 /* YouTubeKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -87,6 +89,7 @@
 			packageProductDependencies = (
 				53A70A002F1E6E5C004B4689 /* GoogleSignIn */,
 				53A70A022F1E6E5C004B4689 /* GoogleSignInSwift */,
+				534E92BE2F2917AD00ED0453 /* YouTubeKit */,
 			);
 			productName = MyTube;
 			productReference = 53A709DA2F1E6CF4004B4689 /* MyTube.app */;
@@ -118,6 +121,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				53A709FF2F1E6E5C004B4689 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				534E92BD2F2917AD00ED0453 /* XCRemoteSwiftPackageReference "YouTubeKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 53A709DB2F1E6CF4004B4689 /* Products */;
@@ -369,6 +373,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		534E92BD2F2917AD00ED0453 /* XCRemoteSwiftPackageReference "YouTubeKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/alexeichhorn/YouTubeKit";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.4.1;
+			};
+		};
 		53A709FF2F1E6E5C004B4689 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
@@ -380,6 +392,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		534E92BE2F2917AD00ED0453 /* YouTubeKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 534E92BD2F2917AD00ED0453 /* XCRemoteSwiftPackageReference "YouTubeKit" */;
+			productName = YouTubeKit;
+		};
 		53A70A002F1E6E5C004B4689 /* GoogleSignIn */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 53A709FF2F1E6E5C004B4689 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;

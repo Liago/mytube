@@ -53,11 +53,12 @@ struct HomeView: View {
                                 VideoCardView(
                                     title: item.snippet.title,
                                     channelName: item.snippet.channelTitle ?? "",
-                                    date: item.snippet.publishedAt.flatMap { DateUtils.parseISOString($0) } ?? (item.snippet.publishedAt != nil ? Date() : nil), // Attempt to parse date or fallback
+                                    date: item.snippet.publishedAt.flatMap { DateUtils.parseISOString($0) } ?? (item.snippet.publishedAt != nil ? Date() : nil),
+                                    duration: DateUtils.formatDuration(item.contentDetails.duration),
                                     thumbnailURL: URL(string: item.snippet.thumbnails?.high?.url ?? item.snippet.thumbnails?.medium?.url ?? ""),
                                     action: {
                                         AudioPlayerService.shared.playVideo(
-                                            videoId: item.videoId,
+                                            videoId: item.id,
                                             title: item.snippet.title,
                                             author: item.snippet.channelTitle ?? "",
                                             thumbnailURL: URL(string: item.snippet.thumbnails?.high?.url ?? ""),

@@ -4,6 +4,7 @@ struct VideoCardView: View {
     let title: String
     let channelName: String
     let date: Date?
+    let duration: String?
     let thumbnailURL: URL?
     let action: () -> Void
     
@@ -53,10 +54,12 @@ struct VideoCardView: View {
                     // Metadata line
                     HStack {
                         if let date = date {
-                            Text(date.formatted(date: .numeric, time: .shortened))
-                            Text("•")
+                            Text("Pubblicato il \(date.formatted(date: .numeric, time: .omitted))")
                         }
-                        Text(channelName)
+                        if let duration = duration {
+                            Text("•")
+                            Text(duration)
+                        }
                     }
                     .font(.subheadline)
                     .foregroundColor(.secondary)
@@ -66,7 +69,7 @@ struct VideoCardView: View {
                     // we can skip or show a generic "Watch now" call to action styled nicely.
                     
                     HStack {
-                        Text("Watch now")
+                        Text(channelName)
                             .font(.headline)
                             .fontWeight(.bold)
                             .padding(.vertical, 12)
@@ -77,7 +80,7 @@ struct VideoCardView: View {
                         
                         Spacer()
                         
-                        Image(systemName: "arrow.up.right")
+                        Image(systemName: "headphones")
                             .font(.system(size: 20, weight: .bold))
                             .padding(12)
                             .background(Color.primary)
@@ -106,6 +109,7 @@ struct VideoCardView_Previews: PreviewProvider {
                 title: "Petra, Jordan - A Journey Through History",
                 channelName: "Travel & History",
                 date: Date(),
+                duration: "10:05",
                 thumbnailURL: URL(string: "https://example.com/image.jpg"),
                 action: {}
             )

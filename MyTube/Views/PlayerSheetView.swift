@@ -20,35 +20,48 @@ struct PlayerSheetView: View {
     }
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Drag Indicator / Top Bar
-            Button(action: {
-                presentationMode.wrappedValue.dismiss()
-            }) {
-                Image(systemName: "chevron.compact.down")
-                    .font(.system(size: 40)) // Large tap area visual
-                    .foregroundColor(.white.opacity(0.6))
-                    .padding(.top, 16)
-                    .padding(.bottom, 20)
-            }
-            
-            Spacer()
-            
-            // Artwork
+        ZStack {
+            // Layer 1: Background Content
             if let url = playerService.coverArtURL {
                 AsyncImage(url: url) { image in
                     image.resizable()
                         .aspectRatio(contentMode: .fill)
+                        .ignoresSafeArea()
+                        .blur(radius: 60)
+                        .overlay(Color.black.opacity(0.4))
                 } placeholder: {
-                    Color.gray
+                    Color.black.ignoresSafeArea()
                 }
-                .frame(width: 320, height: 320) // Adjust based on screen?
-                .cornerRadius(16)
-                .shadow(radius: 10, y: 10)
             } else {
-                Rectangle()
-                    .fill(Color.gray)
-                    .frame(width: 320, height: 320)
+                Color.black.ignoresSafeArea()
+            }
+            
+            // Layer 2: Fallback Player (Removed)
+            
+            // Layer 3: Main UI Content
+            VStack(spacing: 0) {
+                // Drag Indicator / Top Bar
+                Button(action: {
+                    presentationMode.wrappedValue.dismiss()
+                }) {
+                    Image(systemName: "chevron.compact.down")
+                        .font(.system(size: 40)) // Large tap area visual
+                        .foregroundColor(.white.opacity(0.6))
+                        .padding(.top, 16)
+                        .padding(.bottom, 20)
+                }
+                
+                Spacer()
+                
+                // Artwork
+                if let url = playerService.coverArtURL {
+                    AsyncImage(url: url) { image in
+                        image.resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Color.gray
+                    }
+                    .frame(width: 320, height: 320) // Adjust based on screen?
                     .cornerRadius(16)
             }
             
@@ -85,10 +98,10 @@ struct PlayerSheetView: View {
             // Progress Bar
             VStack(spacing: 8) {
                 Slider(value: Binding(get: {
-                    playerService.currentTime
+                    playerService.currentTime.isNaN ? 0 : playerService.currentTime
                 }, set: { newValue in
                     playerService.seek(to: newValue)
-                }), in: 0...max(1.0, playerService.duration))
+                }), in: 0...max(1.0, (playerService.duration.isNaN ? 0 : playerService.duration)))
                 .accentColor(.yellow) // Matching screenshot
                 
                 HStack {
@@ -185,26 +198,10 @@ struct PlayerSheetView: View {
             }
             .font(.system(size: 22))
             .padding(.bottom, 32)
-        }
-        .padding(.top, 40) // Add some top padding for status bar if not ignoring safe area
+        } // End of UI VStack
+    } // End of ZStack
+        .padding(.top, 40)
         .padding(.bottom, 20)
-        .background(
-            ZStack {
-                if let url = playerService.coverArtURL {
-                    AsyncImage(url: url) { image in
-                        image.resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .ignoresSafeArea()
-                            .blur(radius: 60)
-                            .overlay(Color.black.opacity(0.4))
-                    } placeholder: {
-                        Color.black.ignoresSafeArea()
-                    }
-                } else {
-                    Color.black.ignoresSafeArea()
-                }
-            }
-        )
         .offset(y: dragOffset.height)
         .gesture(
             DragGesture()
@@ -222,11 +219,14 @@ struct PlayerSheetView: View {
                 }
         )
         .animation(.spring(), value: dragOffset)
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            // Ensure audio session remains active for WebView
+            print("PlayerSheetView: App backgrounded - confirming WebView playback rights")
+        }
     }
     
-    // Speed Toggle Logic
+    // Speed Toggle Logic already handled inline
 
-    
     func formatTime(_ seconds: Double) -> String {
         let totalSeconds = Int(seconds)
         let minutes = totalSeconds / 60

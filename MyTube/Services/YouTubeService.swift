@@ -152,4 +152,30 @@ class YouTubeService {
         }
         return channel
     }
+    func fetchVideoDetails(videoIds: [String]) async throws -> [Video] {
+        guard !videoIds.isEmpty else { return [] }
+        
+        // YouTube API allows up to 50 ids per request
+        // Since we are likely fetching small batches (e.g. 10-20), we can do it in one go.
+        // If we expect more, we should chunk it. For now, taking first 50 is safe or chunking if needed.
+        // Let's implement chunking for robustness.
+        
+        var allVideos: [Video] = []
+        let chunks = stride(from: 0, to: videoIds.count, by: 50).map {
+            Array(videoIds[$0..<min($0 + 50, videoIds.count)])
+        }
+        
+        for chunk in chunks {
+            let idsString = chunk.joined(separator: ",")
+            let queryItems = [
+                URLQueryItem(name: "id", value: idsString),
+                URLQueryItem(name: "part", value: "snippet,contentDetails")
+            ]
+            
+            let response: YouTubeResponse<Video> = try await performRequest(endpoint: "/videos", queryItems: queryItems)
+            allVideos.append(contentsOf: response.items)
+        }
+        
+        return allVideos
+    }
 }

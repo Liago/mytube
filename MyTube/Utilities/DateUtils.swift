@@ -35,4 +35,39 @@ struct DateUtils {
         guard let date = parseISOString(isoString) else { return false }
         return Calendar.current.isDateInToday(date)
     }
+
+    static func formatDuration(_ isoDuration: String) -> String {
+        // PT5M30S -> 5:30
+        // PT1H2M3S -> 1:02:03
+        
+        let pattern = "PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return "" }
+        
+        let nsString = isoDuration as NSString
+        let results = regex.matches(in: isoDuration, range: NSRange(location: 0, length: nsString.length))
+        
+        guard let match = results.first else { return "" }
+        
+        var hours = 0
+        var minutes = 0
+        var seconds = 0
+        
+        if let hRange = Range(match.range(at: 1), in: isoDuration) {
+            hours = Int(isoDuration[hRange]) ?? 0
+        }
+        
+        if let mRange = Range(match.range(at: 2), in: isoDuration) {
+            minutes = Int(isoDuration[mRange]) ?? 0
+        }
+        
+        if let sRange = Range(match.range(at: 3), in: isoDuration) {
+            seconds = Int(isoDuration[sRange]) ?? 0
+        }
+        
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            return String(format: "%d:%02d", minutes, seconds)
+        }
+    }
 }

@@ -185,18 +185,39 @@ class AudioPlayerService: NSObject, ObservableObject {
         self.useFallbackPlayer = false // Reset fallback flag
         updateNowPlayingInfo()
 
-        // Fetch audio stream URL and start native playback
+        // Fetch audio stream URL and download locally before playing
         Task {
             do {
                 let streamURL = try await YouTubeStreamService.shared.getAudioStreamURL(videoId: videoId)
 
                 // Verify we're still supposed to play this video
                 guard self.currentVideoId == videoId else { return }
-
-                // Always use proxy to safely bypass 403 Forbidden by masking User-Agent
-                await self.startProxiedPlayback(remoteURL: streamURL)
                 
-                self.isLoadingStream = false
+                // Extract expected duration from URL parameter (dur=xxx.xxx)
+                if let urlComponents = URLComponents(url: streamURL, resolvingAgainstBaseURL: false),
+                   let durParam = urlComponents.queryItems?.first(where: { $0.name == "dur" }),
+                   let durString = durParam.value,
+                   let expectedDuration = Double(durString) {
+                    self.duration = expectedDuration
+                    print("Duration from URL: \(expectedDuration)s")
+                }
+
+                // Download locally first (or use cache)
+                AudioDownloadManager.shared.downloadAudio(from: streamURL, videoId: videoId) { [weak self] result in
+                    Task { @MainActor [weak self] in
+                        guard let self = self, self.currentVideoId == videoId else { return }
+                        
+                        switch result {
+                        case .success(let localURL):
+                            self.startLocalPlayback(url: localURL)
+                            self.isLoadingStream = false
+                        case .failure(let error):
+                            print("Download failed: \(error)")
+                            self.isLoadingStream = false
+                            self.isPlaying = false
+                        }
+                    }
+                }
             } catch {
                 print("Stream extraction failed: \(error)")
                 self.isLoadingStream = false
@@ -281,13 +302,41 @@ class AudioPlayerService: NSObject, ObservableObject {
             self.startNativePlayback(url: remoteURL)
         }
     }
+    
+    /// Start playback from a local file (downloaded audio)
+    /// This is the preferred method as it avoids all 403 issues
+    private func startLocalPlayback(url: URL) {
+        print("Starting local playback from: \(url.lastPathComponent)")
+        
+        let playerItem = AVPlayerItem(url: url)
+        
+        // Observe status and error for debugging
+        playerItem.addObserver(self, forKeyPath: #keyPath(AVPlayerItem.status), options: [.new], context: nil)
+        playerItem.addObserver(self, forKeyPath: #keyPath(AVPlayerItem.error), options: [.new], context: nil)
+
+        if player == nil {
+            player = AVPlayer(playerItem: playerItem)
+        } else {
+            player?.replaceCurrentItem(with: playerItem)
+        }
+        
+        player?.automaticallyWaitsToMinimizeStalling = false // Local file, no buffering needed
+        player?.play()
+        player?.rate = playbackRate
+        isPlaying = true
+
+        setupTimeObserver()
+        setupEndObserver()
+        startProgressTracking()
+        updateNowPlayingInfo()
+
+        print("Local AVPlayer started for file: \(url.lastPathComponent)")
+    }
 
     /// Enable fallback mode (WebView) - DEPRECATED / DISABLED
-    /// We now rely on the local proxy to handle 403 errors.
+    /// We now rely on local download to handle 403 errors.
     private func enableFallbackMode() {
-        print("Fallback Mode triggered but DISABLED in favor of Proxy.")
-        // Optionally, we could retry with proxy here if we weren't already using it.
-        // But since we proxy everything now, a failure here is real.
+        print("Fallback Mode triggered but DISABLED in favor of Local Download.")
         Task { @MainActor in
             self.isPlaying = false
             self.stop()

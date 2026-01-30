@@ -3,6 +3,7 @@ import MediaPlayer
 
 struct PlayerSheetView: View {
     @ObservedObject var playerService = AudioPlayerService.shared
+    @ObservedObject var downloadManager = AudioDownloadManager.shared
     @Environment(\.presentationMode) var presentationMode
     
     // For drag gesture to dismiss
@@ -36,7 +37,29 @@ struct PlayerSheetView: View {
                 Color.black.ignoresSafeArea()
             }
             
-            // Layer 2: Fallback Player (Removed)
+            // Layer 2: Download Progress Overlay
+            if downloadManager.isDownloading {
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(1.5)
+                    
+                    Text("Downloading...")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    
+                    ProgressView(value: downloadManager.downloadProgress)
+                        .progressViewStyle(LinearProgressViewStyle(tint: .yellow))
+                        .frame(width: 200)
+                    
+                    Text("\(Int(downloadManager.downloadProgress * 100))%")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .padding(32)
+                .background(Color.black.opacity(0.7))
+                .cornerRadius(16)
+            }
             
             // Layer 3: Main UI Content
             VStack(spacing: 0) {

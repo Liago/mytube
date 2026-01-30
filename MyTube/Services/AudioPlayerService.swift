@@ -18,10 +18,6 @@ class AudioPlayerService: NSObject, ObservableObject {
     private var rateObserver: NSKeyValueObservation?
     private var timeControlObserver: NSKeyValueObservation?
 
-    // Resource loader for custom HTTP headers
-    private let resourceLoader = StreamResourceLoader()
-    private let resourceLoaderQueue = DispatchQueue(label: "AudioPlayerService.resourceLoader")
-
     // Fallback Player (WebView) - DEPRECATED
     @Published var useFallbackPlayer: Bool = false
 
@@ -258,20 +254,43 @@ class AudioPlayerService: NSObject, ObservableObject {
             print("Duration from URL: \(expectedDuration)s")
         }
 
-        // Convert URL to custom scheme for resource loader interception
-        guard let customURL = StreamResourceLoader.customURL(from: url) else {
-            print("Failed to create custom URL")
-            isLoadingStream = false
-            return
+        // Start local proxy server and configure playback
+        Task {
+            do {
+                // Start proxy server
+                try await LocalStreamProxy.shared.startServer()
+
+                // Set the remote YouTube URL
+                LocalStreamProxy.shared.setRemoteURL(url)
+
+                // Get local proxy URL
+                guard let localURL = LocalStreamProxy.shared.getLocalURL() else {
+                    print("Failed to get local proxy URL")
+                    await MainActor.run {
+                        self.isLoadingStream = false
+                    }
+                    return
+                }
+
+                print("Playing through local proxy: \(localURL)")
+
+                await MainActor.run {
+                    self.configurePlayerWithURL(localURL)
+                }
+
+            } catch {
+                print("Failed to start proxy: \(error)")
+                await MainActor.run {
+                    self.isLoadingStream = false
+                    self.isPlaying = false
+                }
+            }
         }
-        print("Custom URL scheme: \(customURL.scheme ?? "none")")
+    }
 
-        // Create AVURLAsset with custom scheme
-        let asset = AVURLAsset(url: customURL)
-
-        // Set our resource loader delegate to handle the custom scheme
-        // This allows us to intercept requests and add required HTTP headers
-        asset.resourceLoader.setDelegate(resourceLoader, queue: resourceLoaderQueue)
+    private func configurePlayerWithURL(_ url: URL) {
+        // Create AVURLAsset - no custom headers needed for local proxy
+        let asset = AVURLAsset(url: url)
 
         // Create player item
         let item = AVPlayerItem(asset: asset)
@@ -303,7 +322,7 @@ class AudioPlayerService: NSObject, ObservableObject {
         isPlaying = true
 
         updateNowPlayingInfo()
-        print("Native AVPlayer started successfully")
+        print("Native AVPlayer started successfully via proxy")
     }
 
     private func setupItemObservers(for item: AVPlayerItem) {
@@ -495,9 +514,6 @@ class AudioPlayerService: NSObject, ObservableObject {
             NotificationCenter.default.removeObserver(observer)
             endObserver = nil
         }
-
-        // Cancel any pending resource loader tasks
-        resourceLoader.cancelAllTasks()
 
         player?.pause()
         player?.replaceCurrentItem(with: nil)

@@ -369,7 +369,8 @@ class AudioPlayerService: NSObject, ObservableObject {
                 player?.rate = playbackRate
             }
             // Update duration if available from item
-            if let dur = item.duration.seconds, dur.isFinite && dur > 0 {
+            let dur = item.duration.seconds
+            if dur.isFinite && dur > 0 {
                 if duration == 0 || dur < duration {
                     duration = dur
                 }

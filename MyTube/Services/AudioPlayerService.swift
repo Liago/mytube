@@ -18,6 +18,10 @@ class AudioPlayerService: NSObject, ObservableObject {
     private var rateObserver: NSKeyValueObservation?
     private var timeControlObserver: NSKeyValueObservation?
 
+    // Resource loader for custom HTTP headers
+    private let resourceLoader = StreamResourceLoader()
+    private let resourceLoaderQueue = DispatchQueue(label: "AudioPlayerService.resourceLoader")
+
     // Fallback Player (WebView) - DEPRECATED
     @Published var useFallbackPlayer: Bool = false
 
@@ -254,20 +258,20 @@ class AudioPlayerService: NSObject, ObservableObject {
             print("Duration from URL: \(expectedDuration)s")
         }
 
-        // Configure HTTP headers for YouTube
-        // Using Android client User-Agent to avoid restrictions
-        let headers: [String: String] = [
-            "User-Agent": "com.google.android.youtube/19.29.37 (Linux; U; Android 14; en_US) gzip",
-            "Accept": "*/*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Origin": "https://www.youtube.com",
-            "Referer": "https://www.youtube.com/"
-        ]
+        // Convert URL to custom scheme for resource loader interception
+        guard let customURL = StreamResourceLoader.customURL(from: url) else {
+            print("Failed to create custom URL")
+            isLoadingStream = false
+            return
+        }
+        print("Custom URL scheme: \(customURL.scheme ?? "none")")
 
-        // Create AVURLAsset with custom headers
-        let asset = AVURLAsset(url: url, options: [
-            "AVURLAssetHTTPHeaderFieldsKey": headers
-        ])
+        // Create AVURLAsset with custom scheme
+        let asset = AVURLAsset(url: customURL)
+
+        // Set our resource loader delegate to handle the custom scheme
+        // This allows us to intercept requests and add required HTTP headers
+        asset.resourceLoader.setDelegate(resourceLoader, queue: resourceLoaderQueue)
 
         // Create player item
         let item = AVPlayerItem(asset: asset)
@@ -491,6 +495,9 @@ class AudioPlayerService: NSObject, ObservableObject {
             NotificationCenter.default.removeObserver(observer)
             endObserver = nil
         }
+
+        // Cancel any pending resource loader tasks
+        resourceLoader.cancelAllTasks()
 
         player?.pause()
         player?.replaceCurrentItem(with: nil)

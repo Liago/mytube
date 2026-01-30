@@ -168,7 +168,7 @@ final class StreamResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         if let contentInfoRequest = loadingRequest.contentInformationRequest {
             // Set content type
             if let mimeType = httpResponse.mimeType {
-                let uti = UTType(mimeType: mimeType)
+                let uti = UTType.fromMIME(mimeType)
                 contentInfoRequest.contentType = uti?.identifier
             }
 
@@ -213,25 +213,31 @@ final class StreamResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
     }
 }
 
-// MARK: - UTType Extension for MIME type conversion
+// MARK: - UTType Helper for MIME type conversion
 import UniformTypeIdentifiers
 
 extension UTType {
-    init?(mimeType: String) {
-        if let type = UTType(mimeType: mimeType) {
-            self = type
-        } else {
-            // Fallback for common audio types
-            switch mimeType {
-            case "audio/mp4", "audio/m4a":
-                self = .mpeg4Audio
-            case "audio/webm":
-                self = UTType("org.webmproject.webm") ?? .audio
-            case "audio/mpeg", "audio/mp3":
-                self = .mp3
-            default:
-                return nil
-            }
+    /// Create UTType from MIME type string
+    static func fromMIME(_ mimeType: String) -> UTType? {
+        // Use Apple's API to convert MIME type to UTType
+        if let type = UTType(tag: mimeType, tagClass: .mimeType, conformingTo: nil) {
+            return type
+        }
+
+        // Fallback for common audio types that might not be recognized
+        switch mimeType {
+        case "audio/mp4", "audio/m4a", "audio/x-m4a":
+            return .mpeg4Audio
+        case "audio/webm":
+            return UTType("org.webmproject.webm") ?? .audio
+        case "audio/mpeg", "audio/mp3":
+            return .mp3
+        case "audio/aac":
+            return .aac
+        case "audio/ogg":
+            return UTType("org.xiph.ogg") ?? .audio
+        default:
+            return .audio
         }
     }
 }

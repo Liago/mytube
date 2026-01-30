@@ -1,34 +1,40 @@
 import AVFoundation
 import Foundation
+import UniformTypeIdentifiers
 
 /// Custom resource loader that intercepts AVPlayer requests and adds required HTTP headers
-/// This is necessary because AVURLAsset doesn't reliably support custom HTTP headers
-final class StreamResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
+/// Uses streaming download to avoid YouTube's anti-download protection
+final class StreamResourceLoader: NSObject, AVAssetResourceLoaderDelegate, URLSessionDataDelegate {
 
     // Custom URL scheme to intercept requests
     static let customScheme = "ytstream"
 
-    // Headers required for YouTube streams
+    // Headers required for YouTube streams (Android client)
     private let headers: [String: String] = [
         "User-Agent": "com.google.android.youtube/19.29.37 (Linux; U; Android 14; en_US) gzip",
         "Accept": "*/*",
         "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity",
         "Origin": "https://www.youtube.com",
-        "Referer": "https://www.youtube.com/"
+        "Referer": "https://www.youtube.com/",
+        "Connection": "keep-alive",
+        "X-YouTube-Client-Name": "3",
+        "X-YouTube-Client-Version": "19.29.37"
     ]
 
-    // Active data tasks for cancellation
-    private var activeTasks: [Int: URLSessionDataTask] = [:]
-    private let taskQueue = DispatchQueue(label: "StreamResourceLoader.taskQueue")
+    // Active loading requests
+    private var pendingRequests: [URLSessionTask: AVAssetResourceLoadingRequest] = [:]
+    private var receivedData: [URLSessionTask: NSMutableData] = [:]
+    private let requestQueue = DispatchQueue(label: "StreamResourceLoader.queue")
 
-    // Lazy URLSession with custom configuration
+    // URLSession for streaming
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.default
-        config.httpAdditionalHeaders = headers
         config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 300
+        config.timeoutIntervalForResource = 600
         config.waitsForConnectivity = true
-        return URLSession(configuration: config)
+        config.httpMaximumConnectionsPerHost = 1
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
 
     /// Convert a regular HTTPS URL to our custom scheme URL
@@ -36,17 +42,7 @@ final class StreamResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         guard var components = URLComponents(url: originalURL, resolvingAgainstBaseURL: false) else {
             return nil
         }
-        // Store original scheme in a query parameter for later restoration
-        let originalScheme = components.scheme ?? "https"
         components.scheme = customScheme
-
-        // Add original scheme as query param if not already https
-        if originalScheme != "https" {
-            var queryItems = components.queryItems ?? []
-            queryItems.append(URLQueryItem(name: "_originalScheme", value: originalScheme))
-            components.queryItems = queryItems
-        }
-
         return components.url
     }
 
@@ -55,21 +51,7 @@ final class StreamResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         guard var components = URLComponents(url: customURL, resolvingAgainstBaseURL: false) else {
             return nil
         }
-
-        // Check for stored original scheme
-        var originalScheme = "https"
-        if let queryItems = components.queryItems,
-           let schemeItem = queryItems.first(where: { $0.name == "_originalScheme" }),
-           let scheme = schemeItem.value {
-            originalScheme = scheme
-            // Remove the _originalScheme parameter
-            components.queryItems = queryItems.filter { $0.name != "_originalScheme" }
-            if components.queryItems?.isEmpty == true {
-                components.queryItems = nil
-            }
-        }
-
-        components.scheme = originalScheme
+        components.scheme = "https"
         return components.url
     }
 
@@ -84,10 +66,26 @@ final class StreamResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
             return false
         }
 
-        print("StreamResourceLoader: Loading \(originalURL.absoluteString.prefix(80))...")
+        return startDataRequest(loadingRequest: loadingRequest, url: originalURL)
+    }
 
-        // Create request with headers
-        var request = URLRequest(url: originalURL)
+    func resourceLoader(_ resourceLoader: AVAssetResourceLoader,
+                        didCancel loadingRequest: AVAssetResourceLoadingRequest) {
+        requestQueue.sync {
+            // Find and cancel the associated task
+            for (task, request) in pendingRequests where request === loadingRequest {
+                task.cancel()
+                pendingRequests.removeValue(forKey: task)
+                receivedData.removeValue(forKey: task)
+                break
+            }
+        }
+    }
+
+    // MARK: - Data Request Handling
+
+    private func startDataRequest(loadingRequest: AVAssetResourceLoadingRequest, url: URL) -> Bool {
+        var request = URLRequest(url: url)
         request.httpMethod = "GET"
 
         // Add all required headers
@@ -95,60 +93,45 @@ final class StreamResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
-        // Handle range requests if present
+        // Handle range requests
         if let dataRequest = loadingRequest.dataRequest {
             let start = dataRequest.requestedOffset
-            let length = dataRequest.requestedLength
+            let length = Int64(dataRequest.requestedLength)
 
             if dataRequest.requestsAllDataToEndOfResource {
                 request.setValue("bytes=\(start)-", forHTTPHeaderField: "Range")
+                print("StreamResourceLoader: Range request: bytes=\(start)-")
             } else {
-                request.setValue("bytes=\(start)-\(start + Int64(length) - 1)", forHTTPHeaderField: "Range")
+                // Request in smaller chunks to avoid 403
+                let end = start + min(length, 2 * 1024 * 1024) - 1  // Max 2MB chunks
+                request.setValue("bytes=\(start)-\(end)", forHTTPHeaderField: "Range")
+                print("StreamResourceLoader: Range request: bytes=\(start)-\(end)")
             }
-            print("StreamResourceLoader: Range request: bytes=\(start)-\(start + Int64(length) - 1)")
+        } else {
+            print("StreamResourceLoader: Full request (no range)")
         }
 
-        // Create and start data task
-        let task = session.dataTask(with: request) { [weak self] data, response, error in
-            self?.handleResponse(loadingRequest: loadingRequest, data: data, response: response, error: error)
-        }
+        print("StreamResourceLoader: Loading \(url.host ?? "unknown")...")
 
-        // Store task for potential cancellation
-        let taskId = task.taskIdentifier
-        taskQueue.sync {
-            activeTasks[taskId] = task
+        let task = session.dataTask(with: request)
+
+        requestQueue.sync {
+            pendingRequests[task] = loadingRequest
+            receivedData[task] = NSMutableData()
         }
 
         task.resume()
         return true
     }
 
-    func resourceLoader(_ resourceLoader: AVAssetResourceLoader,
-                        didCancel loadingRequest: AVAssetResourceLoadingRequest) {
-        // Cancel any active tasks associated with this request
-        taskQueue.sync {
-            // We can't easily map loadingRequest to task, so this is a simple cleanup
-            // In a more complex implementation, you'd track this mapping
-        }
-    }
+    // MARK: - URLSessionDataDelegate
 
-    // MARK: - Response Handling
-
-    private func handleResponse(loadingRequest: AVAssetResourceLoadingRequest,
-                                data: Data?,
-                                response: URLResponse?,
-                                error: Error?) {
-
-        // Check for errors
-        if let error = error {
-            print("StreamResourceLoader: Error - \(error.localizedDescription)")
-            loadingRequest.finishLoading(with: error)
-            return
-        }
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
+                    didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            print("StreamResourceLoader: Invalid response type")
-            loadingRequest.finishLoading(with: URLError(.badServerResponse))
+            completionHandler(.cancel)
             return
         }
 
@@ -157,42 +140,79 @@ final class StreamResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         // Check for HTTP errors
         guard (200...299).contains(httpResponse.statusCode) || httpResponse.statusCode == 206 else {
             print("StreamResourceLoader: HTTP error \(httpResponse.statusCode)")
-            let error = NSError(domain: "StreamResourceLoader",
-                               code: httpResponse.statusCode,
-                               userInfo: [NSLocalizedDescriptionKey: "HTTP \(httpResponse.statusCode)"])
-            loadingRequest.finishLoading(with: error)
+            completionHandler(.cancel)
+
+            requestQueue.sync {
+                if let loadingRequest = pendingRequests[dataTask] {
+                    let error = NSError(domain: "StreamResourceLoader",
+                                       code: httpResponse.statusCode,
+                                       userInfo: [NSLocalizedDescriptionKey: "HTTP \(httpResponse.statusCode)"])
+                    loadingRequest.finishLoading(with: error)
+                    pendingRequests.removeValue(forKey: dataTask)
+                    receivedData.removeValue(forKey: dataTask)
+                }
+            }
             return
         }
 
-        // Fill in content information
-        if let contentInfoRequest = loadingRequest.contentInformationRequest {
-            // Set content type
-            if let mimeType = httpResponse.mimeType {
-                let uti = UTType.fromMIME(mimeType)
-                contentInfoRequest.contentType = uti?.identifier
-            }
+        // Fill content information on first response
+        requestQueue.sync {
+            if let loadingRequest = pendingRequests[dataTask],
+               let contentInfoRequest = loadingRequest.contentInformationRequest {
 
-            // Set content length
-            if let contentRangeHeader = httpResponse.value(forHTTPHeaderField: "Content-Range") {
-                // Parse "bytes 0-999/5000" format
-                if let totalSize = parseContentLength(from: contentRangeHeader) {
-                    contentInfoRequest.contentLength = totalSize
+                // Set content type
+                if let mimeType = httpResponse.mimeType {
+                    contentInfoRequest.contentType = UTType.fromMIME(mimeType)?.identifier
                 }
-            } else if httpResponse.expectedContentLength > 0 {
-                contentInfoRequest.contentLength = httpResponse.expectedContentLength
+
+                // Set content length from Content-Range header
+                if let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range"),
+                   let totalLength = parseContentLength(from: contentRange) {
+                    contentInfoRequest.contentLength = totalLength
+                    print("StreamResourceLoader: Total content length: \(totalLength)")
+                } else if httpResponse.expectedContentLength > 0 {
+                    contentInfoRequest.contentLength = httpResponse.expectedContentLength
+                }
+
+                contentInfoRequest.isByteRangeAccessSupported = true
+            }
+        }
+
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        requestQueue.sync {
+            // Append data to buffer
+            receivedData[dataTask]?.append(data)
+
+            // Stream data to AVPlayer as it arrives
+            if let loadingRequest = pendingRequests[dataTask],
+               let dataRequest = loadingRequest.dataRequest {
+                dataRequest.respond(with: data)
+            }
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        requestQueue.sync {
+            guard let loadingRequest = pendingRequests[task] else { return }
+
+            if let error = error {
+                print("StreamResourceLoader: Task error: \(error.localizedDescription)")
+                loadingRequest.finishLoading(with: error)
+            } else {
+                let totalBytes = receivedData[task]?.length ?? 0
+                print("StreamResourceLoader: Completed, total bytes: \(totalBytes)")
+                loadingRequest.finishLoading()
             }
 
-            contentInfoRequest.isByteRangeAccessSupported = true
+            pendingRequests.removeValue(forKey: task)
+            receivedData.removeValue(forKey: task)
         }
-
-        // Provide the data
-        if let data = data, let dataRequest = loadingRequest.dataRequest {
-            dataRequest.respond(with: data)
-            print("StreamResourceLoader: Provided \(data.count) bytes")
-        }
-
-        loadingRequest.finishLoading()
     }
+
+    // MARK: - Helpers
 
     private func parseContentLength(from contentRange: String) -> Int64? {
         // Parse "bytes 0-999/5000" to get 5000
@@ -203,18 +223,18 @@ final class StreamResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         return nil
     }
 
-    // MARK: - Cleanup
-
     func cancelAllTasks() {
-        taskQueue.sync {
-            activeTasks.values.forEach { $0.cancel() }
-            activeTasks.removeAll()
+        requestQueue.sync {
+            for task in pendingRequests.keys {
+                task.cancel()
+            }
+            pendingRequests.removeAll()
+            receivedData.removeAll()
         }
     }
 }
 
 // MARK: - UTType Helper for MIME type conversion
-import UniformTypeIdentifiers
 
 extension UTType {
     /// Create UTType from MIME type string

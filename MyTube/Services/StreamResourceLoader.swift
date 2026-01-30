@@ -233,7 +233,7 @@ extension UTType {
         case "audio/mpeg", "audio/mp3":
             return .mp3
         case "audio/aac":
-            return .aac
+            return UTType("public.aac-audio") ?? .mpeg4Audio
         case "audio/ogg":
             return UTType("org.xiph.ogg") ?? .audio
         default:

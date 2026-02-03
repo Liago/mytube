@@ -8,6 +8,10 @@ struct PlayerSheetView: View {
     // For drag gesture to dismiss
     @State private var dragOffset = CGSize.zero
     
+    // For progress bar dragging
+    @State private var isDraggingSlider: Bool = false
+    @State private var draggedProgress: Double = 0.0
+    
     // Formatting for date
     private var dateString: String {
         guard let isoDate = playerService.currentVideoDate,
@@ -57,12 +61,17 @@ struct PlayerSheetView: View {
                 if let url = playerService.coverArtURL {
                     AsyncImage(url: url) { image in
                         image.resizable()
-                            .aspectRatio(contentMode: .fill)
+                            .aspectRatio(contentMode: .fit) // Fit aspect ratio
+                            .cornerRadius(12)
+                            .shadow(radius: 20)
                     } placeholder: {
                         Color.gray
+                            .aspectRatio(1, contentMode: .fit)
+                            .cornerRadius(12)
                     }
-                    .frame(width: 320, height: 320) // Adjust based on screen?
-                    .cornerRadius(16)
+                    .padding(.horizontal, 24) // Slight padding from edges
+                        .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
+                        .frame(maxHeight: UIScreen.main.bounds.height * 0.45) // Limit height for vertical videos
             }
             
             Spacer()
@@ -84,6 +93,7 @@ struct PlayerSheetView: View {
                     .foregroundColor(.white)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true) // Force Wrap
                 
                 // Author/Subtitle
                 Text(playerService.currentAuthor)
@@ -91,30 +101,84 @@ struct PlayerSheetView: View {
                     .foregroundColor(.white.opacity(0.8))
                     .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: UIScreen.main.bounds.width - 64, alignment: .leading) // Explicit width constraint
             .padding(.horizontal, 32)
-            .padding(.bottom, 32)
+            .padding(.bottom, 24)
             
-            // Progress Bar
-            VStack(spacing: 8) {
-                Slider(value: Binding(get: {
-                    playerService.currentTime.isNaN ? 0 : playerService.currentTime
-                }, set: { newValue in
-                    playerService.seek(to: newValue)
-                }), in: 0...max(1.0, (playerService.duration.isNaN ? 0 : playerService.duration)))
-                .accentColor(.yellow) // Matching screenshot
+            // Progress Bar Area
+            // Progress Bar Area - RADICAL HEADER
+            VStack(spacing: 20) {
                 
-                HStack {
-                     Text(formatTime(playerService.currentTime))
-                     Spacer()
-                     Text(formatTime(playerService.duration - playerService.currentTime))
+                // 1. Time Labels - CENTERED and LARGE (User Request)
+                HStack(spacing: 20) {
+                    Text(formatTime(isDraggingSlider ? draggedProgress * playerService.duration : playerService.currentTime))
+                        .fontWeight(.semibold)
+                    Text("/")
+                        .opacity(0.5)
+                    Text(formatTime(playerService.duration.isFinite ? playerService.duration : 0))
+                        .fontWeight(.semibold)
                 }
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.7))
+                .font(.body) // Larger font
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity) // Center in container
+                
+                // 2. The Slider - EXPLICIT WIDTH (No GeometryReader bugs)
+                // We know the padding is 32 on each side, so width is Screen - 64
+                let barWidth = UIScreen.main.bounds.width - 64
+                let duration = (playerService.duration.isFinite && playerService.duration > 0) ? playerService.duration : 1.0
+                let current = playerService.currentTime.isFinite ? playerService.currentTime : 0.0
+                // Calculate progress properly
+                let rawProgress = current / duration
+                let activeProgress = isDraggingSlider ? draggedProgress : rawProgress
+                let safeProgress = max(0, min(1, activeProgress))
+                
+                ZStack(alignment: .leading) {
+                    // Touch Area (Transparent)
+                    Rectangle()
+                        .fill(Color.white.opacity(0.001))
+                        .frame(width: barWidth, height: 40)
+                    
+                    // Track (Gray)
+                    Rectangle()
+                        .fill(Color.white.opacity(0.3))
+                        .frame(width: barWidth, height: 6)
+                        .cornerRadius(3)
+                    
+                    // Fill (White)
+                    
+                    Rectangle()
+                        .fill(Color.white)
+                        .frame(width: max(0, barWidth * CGFloat(safeProgress)), height: 6)
+                        .cornerRadius(3)
+                    
+                    // Knob (Big & Visible)
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 20, height: 20)
+                        .shadow(radius: 4)
+                        .offset(x: (barWidth * CGFloat(safeProgress)) - 10) // Center knob (20/2 = 10)
+                }
+                .frame(width: barWidth, height: 40)
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            isDraggingSlider = true
+                            let newProgress = min(max(0, value.location.x / barWidth), 1.0)
+                            draggedProgress = newProgress
+                        }
+                        .onEnded { value in
+                            let newProgress = min(max(0, value.location.x / barWidth), 1.0)
+                            playerService.seek(to: newProgress * duration)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                isDraggingSlider = false
+                            }
+                        }
+                )
             }
             .padding(.horizontal, 32)
-            .padding(.bottom, 40)
-            
+            .padding(.bottom, 24)
+            .layoutPriority(100) // Highest priority
+
             // Controls Row
             HStack(spacing: 40) {
                 // Speed
@@ -181,6 +245,21 @@ struct PlayerSheetView: View {
             }
             .padding(.bottom, 48)
             
+            // Layer 2: Loading Overlay
+            if playerService.isLoadingStream {
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(1.5)
+                    
+                    Text("Processing...")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                }
+                .padding(32)
+                .background(Color.black.opacity(0.7))
+                .cornerRadius(16)
+            }
             // Bottom Actions (Placeholder)
             HStack(spacing: 60) {
                 Button(action: {}) {
@@ -199,35 +278,30 @@ struct PlayerSheetView: View {
             .font(.system(size: 22))
             .padding(.bottom, 32)
         } // End of UI VStack
-    } // End of ZStack
-        .padding(.top, 40)
-        .padding(.bottom, 20)
-        .offset(y: dragOffset.height)
-        .gesture(
-            DragGesture()
-                .onChanged { gesture in
-                    if gesture.translation.height > 0 {
-                        self.dragOffset = gesture.translation
-                    }
+    } // End of body ZStack
+    .padding(.top, 40)
+    .padding(.bottom, 20)
+    .offset(y: dragOffset.height)
+    .gesture(
+        DragGesture()
+            .onChanged { gesture in
+                if gesture.translation.height > 0 {
+                    self.dragOffset = gesture.translation
                 }
-                .onEnded { _ in
-                    if self.dragOffset.height > 150 {
-                        presentationMode.wrappedValue.dismiss()
-                    } else {
-                        self.dragOffset = .zero
-                    }
+            }
+            .onEnded { _ in
+                if self.dragOffset.height > 150 {
+                    presentationMode.wrappedValue.dismiss()
+                } else {
+                    self.dragOffset = .zero
                 }
-        )
-        .animation(.spring(), value: dragOffset)
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
-            // Ensure audio session remains active for WebView
-            print("PlayerSheetView: App backgrounded - confirming WebView playback rights")
-        }
+            }
+    )
+    .animation(.spring(), value: dragOffset)
     }
-    
-    // Speed Toggle Logic already handled inline
 
     func formatTime(_ seconds: Double) -> String {
+        guard seconds.isFinite else { return "0:00" }
         let totalSeconds = Int(seconds)
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60

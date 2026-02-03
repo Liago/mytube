@@ -219,23 +219,29 @@ class AudioPlayerService: NSObject, ObservableObject {
         cleanupPlayer()
         updateNowPlayingInfo()
 
-        // Fetch audio stream URL and start native playback
+        // Fetch audio stream URL from Backend API
         Task {
             do {
-                let streamURL = try await YouTubeStreamService.shared.getAudioStreamURL(videoId: videoId)
+                // Use localhost for simulator testing with 'netlify dev'
+                // User will need to replace with real Netlify URL after deployment
+                let backendURLString = "http://localhost:8888/.netlify/functions/audio?videoId=\(videoId)"
+                guard let url = URL(string: backendURLString) else { return }
+
+                print("AudioPlayerService: Requesting audio from Netlify: \(url.absoluteString)")
 
                 // Verify we're still supposed to play this video
-                guard self.currentVideoId == videoId else {
-                    print("Video ID changed during stream fetch, aborting")
-                    return
-                }
-
-                // Start playback with native AVPlayer
-                self.startNativePlayback(url: streamURL)
-                self.isLoadingStream = false
+                guard self.currentVideoId == videoId else { return }
+                
+                // For the backend solution, we can just play the URL directly.
+                // The backend will handle the 403/downloading logic and return a 307 Redirect to the final R2 URL.
+                // AVPlayer handles redirects automatically.
+                
+                // Note: We do NOT set isLoadingStream = false here.
+                // We wait for the AVPlayer to actually be ready or buffering to finish.
+                self.startNativePlayback(url: url)
 
             } catch {
-                print("Stream extraction failed: \(error)")
+                print("Backend request failed: \(error)")
                 self.isLoadingStream = false
                 self.isPlaying = false
             }
@@ -244,59 +250,14 @@ class AudioPlayerService: NSObject, ObservableObject {
 
     private func startNativePlayback(url: URL) {
         print("Starting native playback with URL: \(url.absoluteString.prefix(100))...")
-
-        // Extract duration from URL if available (dur=xxx.xxx parameter)
-        if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
-           let durParam = urlComponents.queryItems?.first(where: { $0.name == "dur" }),
-           let durString = durParam.value,
-           let expectedDuration = Double(durString) {
-            self.duration = expectedDuration
-            print("Duration from URL: \(expectedDuration)s")
-        }
-
-        // Start local proxy server and configure playback
-        Task {
-            do {
-                // Start proxy server
-                try await LocalStreamProxy.shared.startServer()
-
-                // Set the remote YouTube URL
-                LocalStreamProxy.shared.setRemoteURL(url)
-
-                // Get local proxy URL
-                guard let localURL = LocalStreamProxy.shared.getLocalURL() else {
-                    print("Failed to get local proxy URL")
-                    await MainActor.run {
-                        self.isLoadingStream = false
-                    }
-                    return
-                }
-
-                print("Playing through local proxy: \(localURL)")
-
-                await MainActor.run {
-                    self.configurePlayerWithURL(localURL)
-                }
-
-            } catch {
-                print("Failed to start proxy: \(error)")
-                await MainActor.run {
-                    self.isLoadingStream = false
-                    self.isPlaying = false
-                }
-            }
-        }
-    }
-
-    private func configurePlayerWithURL(_ url: URL) {
-        // Create AVURLAsset - no custom headers needed for local proxy
+        
+        // Create AVURLAsset - no custom headers needed for backend/R2 URL
         let asset = AVURLAsset(url: url)
 
         // Create player item
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = 30  // Buffer 30 seconds ahead
-        self.playerItem = item
-
+        
         // Create or reuse player
         if player == nil {
             player = AVPlayer(playerItem: item)
@@ -309,20 +270,16 @@ class AudioPlayerService: NSObject, ObservableObject {
         // Configure player for background playback
         player?.automaticallyWaitsToMinimizeStalling = true
         player?.allowsExternalPlayback = true
-
-        // Setup observers
-        setupItemObservers(for: item)
-        setupTimeObserver()
-        setupEndObserver()
-        startProgressTracking()
-
-        // Start playback
+        
         player?.play()
         player?.rate = playbackRate
         isPlaying = true
 
+        setupItemObservers(for: item)
+        setupTimeObserver()
+        setupEndObserver()
+        startProgressTracking()
         updateNowPlayingInfo()
-        print("Native AVPlayer started successfully via proxy")
     }
 
     private func setupItemObservers(for item: AVPlayerItem) {
@@ -386,6 +343,8 @@ class AudioPlayerService: NSObject, ObservableObject {
         switch item.status {
         case .readyToPlay:
             print("AVPlayerItem: Ready to play")
+            self.isLoadingStream = false // <--- Spinner off
+            
             // Ensure playback is active
             if isPlaying && player?.rate == 0 {
                 player?.play()

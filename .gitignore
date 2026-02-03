@@ -20,3 +20,10 @@ Package.resolved
 
 # CocoaPods
 Pods/
+.env
+
+# Local Netlify folder
+.netlify
+cookies.json
+node_modules
+*-player-script.js

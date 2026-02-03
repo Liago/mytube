@@ -1,0 +1,13 @@
+[build]
+  command = "npm install"
+  functions = "netlify/functions"
+
+[functions]
+  external_node_modules = ["@aws-sdk/client-s3", "@aws-sdk/lib-storage"]
+  included_files = ["yt-dlp", "yt-dlp-linux"]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/audio"
+  status = 200

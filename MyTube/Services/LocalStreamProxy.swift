@@ -1,325 +1,335 @@
 import Foundation
 import Network
 
-/// A lightweight local HTTP proxy server that relays YouTube audio streams to AVPlayer.
-/// This bypasses YouTube's connection throttling for large files by handling the connection ourselves.
-/// Uses streaming to forward data in real-time as it's downloaded.
+/// Local HTTP proxy server that streams YouTube audio with proper headers
+/// This bypasses YouTube's anti-download protection by streaming data progressively
 final class LocalStreamProxy: NSObject, @unchecked Sendable {
     static let shared = LocalStreamProxy()
-    
+
     private var listener: NWListener?
-    private var connections: [NWConnection] = []
     private let port: UInt16 = 8765
-    private let queue = DispatchQueue(label: "com.mytube.streamproxy")
-    private let lock = NSLock()
-    
-    private(set) var isRunning = false
+    private let queue = DispatchQueue(label: "LocalStreamProxy.queue", qos: .userInitiated)
+
     private var currentRemoteURL: URL?
-    private var expectedHeaders: [String: String] = [:]
-    
-    private override init() {
+    private var isServerRunning = false
+
+    // Headers for YouTube requests
+    private let youtubeHeaders: [String: String] = [
+        "User-Agent": "com.google.android.youtube/19.29.37 (Linux; U; Android 14; en_US) gzip",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity",
+        "Origin": "https://www.youtube.com",
+        "Referer": "https://www.youtube.com/",
+        "Connection": "keep-alive",
+        "X-YouTube-Client-Name": "3",
+        "X-YouTube-Client-Version": "19.29.37"
+    ]
+
+    override private init() {
         super.init()
     }
-    
-    /// Start the local proxy server
+
+    // MARK: - Server Management
+
     func startServer() async throws {
-        guard !isRunning else { return }
-        
-        let parameters = NWParameters.tcp
-        listener = try NWListener(using: parameters, on: NWEndpoint.Port(integerLiteral: port))
-        
-        listener?.stateUpdateHandler = { [weak self] state in
-            guard let self = self else { return }
-            switch state {
-            case .ready:
-                print("LocalStreamProxy: Server listening on port \(self.port)")
-                self.lock.lock()
-                self.isRunning = true
-                self.lock.unlock()
-            case .failed(let error):
-                print("LocalStreamProxy: Server failed: \(error)")
-                self.lock.lock()
-                self.isRunning = false
-                self.lock.unlock()
-            case .cancelled:
-                print("LocalStreamProxy: Server cancelled")
-                self.lock.lock()
-                self.isRunning = false
-                self.lock.unlock()
-            default:
-                break
+        guard !isServerRunning else {
+            print("LocalStreamProxy: Server already running")
+            return
+        }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                do {
+                    let parameters = NWParameters.tcp
+                    parameters.allowLocalEndpointReuse = true
+
+                    self.listener = try NWListener(using: parameters, on: NWEndpoint.Port(integerLiteral: self.port))
+
+                    self.listener?.stateUpdateHandler = { state in
+                        switch state {
+                        case .ready:
+                            self.isServerRunning = true
+                            print("LocalStreamProxy: Server listening on port \(self.port)")
+                            continuation.resume()
+                        case .failed(let error):
+                            self.isServerRunning = false
+                            print("LocalStreamProxy: Server failed: \(error)")
+                            continuation.resume(throwing: error)
+                        case .cancelled:
+                            self.isServerRunning = false
+                            print("LocalStreamProxy: Server cancelled")
+                        default:
+                            break
+                        }
+                    }
+
+                    self.listener?.newConnectionHandler = { [weak self] connection in
+                        self?.handleConnection(connection)
+                    }
+
+                    self.listener?.start(queue: self.queue)
+
+                } catch {
+                    continuation.resume(throwing: error)
+                }
             }
         }
-        
-        listener?.newConnectionHandler = { [weak self] connection in
-            self?.handleNewConnection(connection)
-        }
-        
-        listener?.start(queue: queue)
-        
-        // Wait a bit for server to be ready
-        try await Task.sleep(nanoseconds: 50_000_000) // 50ms
     }
-    
-    /// Stop the proxy server
+
     func stopServer() {
-        listener?.cancel()
-        listener = nil
-        
-        lock.lock()
-        for connection in connections {
-            connection.cancel()
+        queue.async {
+            self.listener?.cancel()
+            self.listener = nil
+            self.isServerRunning = false
+            print("LocalStreamProxy: Server stopped")
         }
-        connections.removeAll()
-        isRunning = false
-        lock.unlock()
-        
-        print("LocalStreamProxy: Server stopped")
     }
-    
-    /// Set the remote URL that the proxy will serve
-    func setRemoteURL(_ url: URL, headers: [String: String] = [:]) {
-        lock.lock()
-        currentRemoteURL = url
-        expectedHeaders = headers
-        lock.unlock()
-        print("LocalStreamProxy: Set remote URL to \(url.absoluteString.prefix(100))...")
+
+    func setRemoteURL(_ url: URL) {
+        self.currentRemoteURL = url
+        print("LocalStreamProxy: Set remote URL")
     }
-    
-    /// Get the local URL that AVPlayer should use
+
     func getLocalURL() -> URL? {
-        lock.lock()
-        let running = isRunning
-        lock.unlock()
-        guard running else { return nil }
-        return URL(string: "http://127.0.0.1:\(port)/stream")
+        guard isServerRunning else { return nil }
+        return URL(string: "http://127.0.0.1:\(port)/audio.m4a")
     }
-    
+
     // MARK: - Connection Handling
-    
-    private func handleNewConnection(_ connection: NWConnection) {
-        lock.lock()
-        connections.append(connection)
-        lock.unlock()
-        
-        connection.stateUpdateHandler = { [weak self] state in
+
+    private func handleConnection(_ connection: NWConnection) {
+        connection.stateUpdateHandler = { state in
             switch state {
             case .ready:
-                self?.receiveRequest(on: connection)
+                self.receiveRequest(on: connection)
             case .failed(let error):
                 print("LocalStreamProxy: Connection failed: \(error)")
                 connection.cancel()
-            case .cancelled:
-                self?.lock.lock()
-                self?.connections.removeAll { $0 === connection }
-                self?.lock.unlock()
             default:
                 break
             }
         }
-        
         connection.start(queue: queue)
     }
-    
+
     private func receiveRequest(on connection: NWConnection) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] data, _, isComplete, error in
-            guard let self = self, let data = data else {
-                if let error = error {
-                    print("LocalStreamProxy: Receive error: \(error)")
-                }
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                print("LocalStreamProxy: Receive error: \(error)")
                 connection.cancel()
                 return
             }
-            
-            // Parse HTTP request to get Range header if present
-            let requestString = String(data: data, encoding: .utf8) ?? ""
-            let rangeHeader = self.parseRangeHeader(from: requestString)
-            
-            // Get current URL and headers
-            self.lock.lock()
-            let remoteURL = self.currentRemoteURL
-            let headers = self.expectedHeaders
-            self.lock.unlock()
-            
-            // Use streaming proxy for the request
-            self.streamProxyRequest(to: connection, remoteURL: remoteURL, headers: headers, rangeHeader: rangeHeader)
+
+            guard let data = data, !data.isEmpty else {
+                if isComplete {
+                    connection.cancel()
+                }
+                return
+            }
+
+            // Parse HTTP request
+            if let requestString = String(data: data, encoding: .utf8) {
+                self.handleHTTPRequest(requestString, on: connection)
+            }
         }
     }
-    
-    private func parseRangeHeader(from request: String) -> String? {
+
+    private func handleHTTPRequest(_ request: String, on connection: NWConnection) {
+        // Parse Range header if present
+        var rangeStart: Int64 = 0
+        var rangeEnd: Int64? = nil
+
         let lines = request.components(separatedBy: "\r\n")
         for line in lines {
             if line.lowercased().hasPrefix("range:") {
-                return String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                let rangeValue = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
+                if rangeValue.hasPrefix("bytes=") {
+                    let rangeSpec = String(rangeValue.dropFirst(6))
+                    let parts = rangeSpec.split(separator: "-", omittingEmptySubsequences: false)
+                    if parts.count >= 1, let start = Int64(parts[0]) {
+                        rangeStart = start
+                    }
+                    if parts.count >= 2, !parts[1].isEmpty, let end = Int64(parts[1]) {
+                        rangeEnd = end
+                    }
+                }
+                break
             }
         }
-        return nil
-    }
-    
-    // MARK: - Streaming Proxy
-    
-    private func streamProxyRequest(to connection: NWConnection, remoteURL: URL?, headers: [String: String], rangeHeader: String?) {
-        guard let remoteURL = remoteURL else {
-            sendErrorResponse(to: connection, statusCode: 500, message: "No remote URL configured")
+
+        print("LocalStreamProxy: Request received, range: \(rangeStart)-\(rangeEnd?.description ?? "end")")
+
+        // Stream from YouTube
+        guard let remoteURL = currentRemoteURL else {
+            sendErrorResponse(connection: connection, statusCode: 503, message: "No remote URL configured")
             return
         }
-        
-        var request = URLRequest(url: remoteURL)
+
+        streamFromYouTube(url: remoteURL, rangeStart: rangeStart, rangeEnd: rangeEnd, to: connection)
+    }
+
+    // MARK: - YouTube Streaming
+
+    private func streamFromYouTube(url: URL, rangeStart: Int64, rangeEnd: Int64?, to connection: NWConnection) {
+        var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.timeoutInterval = 300  // 5 minutes for large files
-        
-        // Add required headers
-        for (key, value) in headers {
+
+        // Add YouTube headers
+        for (key, value) in youtubeHeaders {
             request.setValue(value, forHTTPHeaderField: key)
         }
-        
-        // Forward Range header if present
-        if let rangeHeader = rangeHeader {
-            request.setValue(rangeHeader, forHTTPHeaderField: "Range")
-            print("LocalStreamProxy: Forwarding Range: \(rangeHeader)")
+
+        // Add Range header
+        if let end = rangeEnd {
+            request.setValue("bytes=\(rangeStart)-\(end)", forHTTPHeaderField: "Range")
+        } else {
+            request.setValue("bytes=\(rangeStart)-", forHTTPHeaderField: "Range")
         }
-        
-        // Create a streaming delegate
-        let delegate = StreamingDelegate(connection: connection, queue: queue)
-        
-        // Create a session with our delegate for streaming
-        let config = URLSessionConfiguration.default
-        config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
-        
+
+        print("LocalStreamProxy: Requesting from YouTube with range: bytes=\(rangeStart)-\(rangeEnd?.description ?? "")")
+
+        // Use streaming delegate
+        let delegate = StreamingDelegate(connection: connection, rangeStart: rangeStart)
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         let task = session.dataTask(with: request)
+        delegate.task = task
         task.resume()
     }
-    
-    private func sendErrorResponse(to connection: NWConnection, statusCode: Int, message: String) {
+
+    private func sendErrorResponse(connection: NWConnection, statusCode: Int, message: String) {
         let response = """
-        HTTP/1.1 \(statusCode) Error\r
+        HTTP/1.1 \(statusCode) \(message)\r
         Content-Type: text/plain\r
         Content-Length: \(message.count)\r
         Connection: close\r
         \r
         \(message)
         """
-        
-        if let data = response.data(using: .utf8) {
-            connection.send(content: data, completion: .contentProcessed { _ in
-                connection.cancel()
-            })
-        }
+
+        connection.send(content: response.data(using: .utf8), completion: .contentProcessed { _ in
+            connection.cancel()
+        })
     }
 }
 
 // MARK: - Streaming Delegate
 
-/// Delegate that streams data from URLSession to NWConnection in real-time
 private class StreamingDelegate: NSObject, URLSessionDataDelegate {
-    private let connection: NWConnection
-    private let queue: DispatchQueue
+    let connection: NWConnection
+    let rangeStart: Int64
+    weak var task: URLSessionTask?
+
+    private var totalBytesReceived: Int64 = 0
     private var headersSent = false
-    private var totalBytesReceived = 0
-    
-    init(connection: NWConnection, queue: DispatchQueue) {
+    private var contentLength: Int64 = 0
+
+    init(connection: NWConnection, rangeStart: Int64) {
         self.connection = connection
-        self.queue = queue
+        self.rangeStart = rangeStart
         super.init()
     }
-    
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
+                    didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+
         guard let httpResponse = response as? HTTPURLResponse else {
             completionHandler(.cancel)
+            sendErrorAndClose(statusCode: 502, message: "Invalid response")
             return
         }
-        
-        print("LocalStreamProxy: Upstream response: \(httpResponse.statusCode)")
-        
-        // Check for error status codes
-        if httpResponse.statusCode >= 400 {
-            print("LocalStreamProxy: Upstream error \(httpResponse.statusCode)")
-            sendError(statusCode: httpResponse.statusCode)
+
+        print("LocalStreamProxy: YouTube response: \(httpResponse.statusCode)")
+
+        guard (200...299).contains(httpResponse.statusCode) || httpResponse.statusCode == 206 else {
             completionHandler(.cancel)
+            sendErrorAndClose(statusCode: httpResponse.statusCode, message: "YouTube error")
             return
         }
-        
-        // Build and send response headers immediately
-        let statusText = httpResponse.statusCode == 206 ? "Partial Content" : "OK"
-        var responseHeaders = "HTTP/1.1 \(httpResponse.statusCode) \(statusText)\r\n"
-        responseHeaders += "Content-Type: \(httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "audio/mp4")\r\n"
-        
-        // Forward Content-Length if present
-        if let contentLength = httpResponse.value(forHTTPHeaderField: "Content-Length") {
-            responseHeaders += "Content-Length: \(contentLength)\r\n"
-        }
-        
-        responseHeaders += "Accept-Ranges: bytes\r\n"
-        
-        // Forward Content-Range if present (for partial content)
+
+        // Parse content info
+        var totalSize: Int64 = 0
         if let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range") {
-            responseHeaders += "Content-Range: \(contentRange)\r\n"
+            // Parse "bytes 0-999/5000"
+            if let slashIndex = contentRange.lastIndex(of: "/"),
+               let total = Int64(contentRange[contentRange.index(after: slashIndex)...]) {
+                totalSize = total
+            }
         }
-        
-        responseHeaders += "Connection: close\r\n\r\n"
-        
-        // Send headers
-        if let headerData = responseHeaders.data(using: .utf8) {
-            connection.send(content: headerData, completion: .contentProcessed { [weak self] error in
-                if let error = error {
-                    print("LocalStreamProxy: Header send error: \(error)")
-                } else {
-                    self?.headersSent = true
-                }
-            })
+
+        contentLength = httpResponse.expectedContentLength
+        if contentLength < 0 {
+            contentLength = totalSize - rangeStart
         }
-        
-        completionHandler(.allow)
-    }
-    
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        totalBytesReceived += data.count
-        
-        // Stream data to connection immediately as it arrives
-        connection.send(content: data, completion: .contentProcessed { error in
+
+        // Send HTTP response headers to AVPlayer
+        var headers = "HTTP/1.1 \(httpResponse.statusCode == 206 ? "206 Partial Content" : "200 OK")\r\n"
+        headers += "Content-Type: audio/mp4\r\n"
+        headers += "Accept-Ranges: bytes\r\n"
+
+        if totalSize > 0 {
+            let endByte = rangeStart + contentLength - 1
+            headers += "Content-Range: bytes \(rangeStart)-\(endByte)/\(totalSize)\r\n"
+            headers += "Content-Length: \(contentLength)\r\n"
+        } else if contentLength > 0 {
+            headers += "Content-Length: \(contentLength)\r\n"
+        }
+
+        headers += "Connection: keep-alive\r\n"
+        headers += "\r\n"
+
+        connection.send(content: headers.data(using: .utf8), completion: .contentProcessed { [weak self] error in
             if let error = error {
-                print("LocalStreamProxy: Data send error: \(error)")
+                print("LocalStreamProxy: Header send error: \(error)")
+                self?.task?.cancel()
+            } else {
+                self?.headersSent = true
             }
         })
-        
+
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard headersSent else { return }
+
+        totalBytesReceived += Int64(data.count)
+
+        // Stream data to AVPlayer
+        connection.send(content: data, completion: .contentProcessed { [weak self] error in
+            if let error = error {
+                print("LocalStreamProxy: Data send error: \(error)")
+                self?.task?.cancel()
+            }
+        })
+
         // Log progress periodically
-        if totalBytesReceived % (1024 * 1024) < data.count {  // Every ~1MB
-            print("LocalStreamProxy: Streamed \(totalBytesReceived / 1024)KB so far...")
+        if totalBytesReceived % (512 * 1024) < Int64(data.count) {
+            print("LocalStreamProxy: Streamed \(totalBytesReceived / 1024)KB")
         }
     }
-    
+
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error = error {
-            print("LocalStreamProxy: Stream error: \(error)")
-            sendError(statusCode: 502)
+            print("LocalStreamProxy: Stream error: \(error.localizedDescription)")
         } else {
             print("LocalStreamProxy: Stream completed, total: \(totalBytesReceived) bytes")
         }
-        
-        // Close connection
-        connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { [weak self] _ in
+
+        // Close connection after a small delay to ensure all data is flushed
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { [weak self] in
             self?.connection.cancel()
-        })
-        
+        }
         session.invalidateAndCancel()
     }
-    
-    private func sendError(statusCode: Int) {
-        let message = "Upstream error: \(statusCode)"
-        let response = """
-        HTTP/1.1 \(statusCode) Error\r
-        Content-Type: text/plain\r
-        Content-Length: \(message.count)\r
-        Connection: close\r
-        \r
-        \(message)
-        """
-        
-        if let data = response.data(using: .utf8) {
-            connection.send(content: data, completion: .contentProcessed { [weak self] _ in
-                self?.connection.cancel()
-            })
-        }
+
+    private func sendErrorAndClose(statusCode: Int, message: String) {
+        let response = "HTTP/1.1 \(statusCode) \(message)\r\nConnection: close\r\n\r\n"
+        connection.send(content: response.data(using: .utf8), completion: .contentProcessed { [weak self] _ in
+            self?.connection.cancel()
+        })
     }
 }

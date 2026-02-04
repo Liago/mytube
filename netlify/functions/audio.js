@@ -78,25 +78,46 @@ exports.handler = async (event, context) => {
 		let activeCookiePath = undefined;
 		let hasCookies = false;
 
-		if (fs.existsSync(jsonCookiePath)) {
+		// Helper: convert JSON cookies array to Netscape format string
+		const convertToNetscape = (cookies) => {
+			let netscapeContent = "# Netscape HTTP Cookie File\n";
+			cookies.forEach(c => {
+				const domain = c.domain;
+				const includeSubdomains = domain.startsWith('.') ? 'TRUE' : 'FALSE';
+				const cookiePath = c.path;
+				const secure = c.secure ? 'TRUE' : 'FALSE';
+				const expiration = c.expirationDate ? Math.round(c.expirationDate) : 0;
+				const name = c.name;
+				const value = c.value;
+
+				netscapeContent += `${domain}\t${includeSubdomains}\t${cookiePath}\t${secure}\t${expiration}\t${name}\t${value}\n`;
+			});
+			return netscapeContent;
+		};
+
+		// Try loading cookies from YOUTUBE_COOKIES env var (base64-encoded JSON)
+		if (process.env.YOUTUBE_COOKIES) {
+			console.log('Found YOUTUBE_COOKIES env var, decoding and converting...');
+			try {
+				const decoded = Buffer.from(process.env.YOUTUBE_COOKIES, 'base64').toString('utf8');
+				const cookies = JSON.parse(decoded);
+				const netscapeContent = convertToNetscape(cookies);
+				fs.writeFileSync(netscapeCookiePath, netscapeContent);
+				console.log('Cookies from env var saved to', netscapeCookiePath);
+				activeCookiePath = netscapeCookiePath;
+				hasCookies = true;
+			} catch (err) {
+				console.error("Error processing YOUTUBE_COOKIES env var:", err.message);
+			}
+		}
+
+		// Fallback: try cookies.json file
+		if (!hasCookies && fs.existsSync(jsonCookiePath)) {
 			console.log('Found cookies.json, converting to Netscape format...');
 			try {
 				const jsonContent = fs.readFileSync(jsonCookiePath, 'utf8');
 				const cookies = JSON.parse(jsonContent);
-
-				let netscapeContent = "# Netscape HTTP Cookie File\n";
-				cookies.forEach(c => {
-					const domain = c.domain;
-					const includeSubdomains = domain.startsWith('.') ? 'TRUE' : 'FALSE';
-					const path = c.path;
-					const secure = c.secure ? 'TRUE' : 'FALSE';
-					const expiration = c.expirationDate ? Math.round(c.expirationDate) : 0;
-					const name = c.name;
-					const value = c.value;
-
-					netscapeContent += `${domain}\t${includeSubdomains}\t${path}\t${secure}\t${expiration}\t${name}\t${value}\n`;
-				});
-
+				const netscapeContent = convertToNetscape(cookies);
 				fs.writeFileSync(netscapeCookiePath, netscapeContent);
 				console.log('Converted cookies saved to', netscapeCookiePath);
 				activeCookiePath = netscapeCookiePath;
@@ -106,8 +127,10 @@ exports.handler = async (event, context) => {
 				activeCookiePath = jsonCookiePath;
 				hasCookies = true;
 			}
-		} else {
-			console.log('WARNING: cookies.json not found at', jsonCookiePath);
+		}
+
+		if (!hasCookies) {
+			console.log('WARNING: No cookies available. Set YOUTUBE_COOKIES env var (base64-encoded JSON) or provide cookies.json');
 		}
 
 		// Prepare command: use local binary based on OS
@@ -136,6 +159,8 @@ exports.handler = async (event, context) => {
 			'--force-overwrites',
 			'--no-warnings',
 			'--referer', 'https://www.youtube.com/',
+			'--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+			'--extractor-args', 'youtube:player_client=web',
 			'--write-info-json' // Extract metadata
 		];
 

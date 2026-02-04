@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/Liago/mytube/compare/v1.0.0...v1.0.1) (2026-02-04)
+
+### Bug Fixes
+
+* add YOUTUBE_COOKIES env var support and improve YouTube bot evasion ([2c0d622](https://github.com/Liago/mytube/commit/2c0d622c885dfcdd30c8efabb01becc42da0974e))
+
 ## 1.0.0 (2026-02-04)
 
 ### Features

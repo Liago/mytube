@@ -14,7 +14,17 @@ const s3 = new S3Client({
 	},
 });
 
+const API_SECRET = process.env.API_SECRET;
+
 exports.handler = async (event, context) => {
+	// Security Check
+	if (API_SECRET) {
+		const token = event.headers['x-api-key'] || event.headers['X-Api-Key'];
+		if (token !== API_SECRET) {
+			return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
+		}
+	}
+
 	// Only allow POST or GET with ids param
 	let videoIds = [];
 

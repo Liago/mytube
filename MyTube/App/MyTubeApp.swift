@@ -3,6 +3,12 @@ import GoogleSignIn
 
 @main
 struct MyTubeApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+    
+    init() {
+        BackgroundManager.shared.registerTasks()
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -10,11 +16,18 @@ struct MyTubeApp: App {
                     GIDSignIn.sharedInstance.handle(url)
                 }
                 .onAppear {
-                    // CRITICAL: Explicitly tell the system we want to handle remote controls
-                    // This is often required for background audio to work reliably on physical devices
+                    // CRITICAL: Remote controls
                     UIApplication.shared.beginReceivingRemoteControlEvents()
                     print("Remote Control Events Enabled")
+                    
+                    // Request Notification Permissions
+                    BackgroundManager.shared.requestPermissions()
                 }
+        }
+        .onChange(of: scenePhase) { newPhase in
+            if newPhase == .background {
+                BackgroundManager.shared.scheduleAppRefresh()
+            }
         }
     }
 }

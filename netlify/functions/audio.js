@@ -20,7 +20,17 @@ const s3 = new S3Client({
 	},
 });
 
+const API_SECRET = process.env.API_SECRET;
+
 exports.handler = async (event, context) => {
+	// Security Check
+	if (API_SECRET) {
+		const token = event.headers['x-api-key'] || event.headers['X-Api-Key'];
+		if (token !== API_SECRET) {
+			return { statusCode: 401, body: JSON.stringify({ error: "Unauthorized" }) };
+		}
+	}
+
 	const videoId = event.queryStringParameters.videoId;
 
 	if (!videoId) {
@@ -124,9 +134,9 @@ exports.handler = async (event, context) => {
 			'-f', '140',           // Force AAC/m4a (itag 140)
 			'-o', tmpFilePath,     // Output to file in /tmp
 			'--force-overwrites',
-			'--quiet',
 			'--no-warnings',
-			'--referer', 'https://www.youtube.com/'
+			'--referer', 'https://www.youtube.com/',
+			'--write-info-json' // Extract metadata
 		];
 
 		if (hasCookies && activeCookiePath) {
@@ -163,8 +173,11 @@ exports.handler = async (event, context) => {
 		const fileStream = fs.createReadStream(tmpFilePath);
 		const stats = fs.statSync(tmpFilePath);
 
-		// Upload to R2 from File Stream
-		const parallelUploads3 = new Upload({
+		// Upload Audio and Metadata in parallel
+		const uploads = [];
+
+		// 1. Audio Upload
+		const audioUpload = new Upload({
 			client: s3,
 			params: {
 				Bucket: R2_BUCKET_NAME,
@@ -174,8 +187,35 @@ exports.handler = async (event, context) => {
 				ContentLength: stats.size
 			},
 		});
+		uploads.push(audioUpload.done());
 
-		await parallelUploads3.done();
+		// 2. Metadata Upload (if exists)
+		// yt-dlp typically keys infojson as filename.info.json
+		// Since we explicitly set output to tmpFilePath (.m4a), it likely appends or replaces.
+		// Usually: id.m4a -> id.info.json
+		const possibleMetaPath = tmpFilePath.replace(/\.m4a$/, '.info.json');
+
+		if (fs.existsSync(possibleMetaPath)) {
+			console.log(`Found metadata at ${possibleMetaPath}, uploading...`);
+			const metaStream = fs.createReadStream(possibleMetaPath);
+			const metaUpload = new Upload({
+				client: s3,
+				params: {
+					Bucket: R2_BUCKET_NAME,
+					Key: `${videoId}.json`, // Clean key
+					Body: metaStream,
+					ContentType: "application/json",
+				},
+			});
+			uploads.push(metaUpload.done().then(() => {
+				// Cleanup metadata immediately
+				try { fs.unlinkSync(possibleMetaPath); } catch (e) { }
+			}));
+		} else {
+			console.log(`Metadata file not found at ${possibleMetaPath}`);
+		}
+
+		await Promise.all(uploads);
 
 		// Cleanup /tmp
 		try {

@@ -57,6 +57,7 @@ class CacheStatusService: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(Secrets.apiSecret, forHTTPHeaderField: "x-api-key")
             request.httpBody = try JSONSerialization.data(withJSONObject: ["ids": idsToCheck])
             
             let (data, _) = try await URLSession.shared.data(for: request)

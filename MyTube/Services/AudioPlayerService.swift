@@ -259,7 +259,10 @@ class AudioPlayerService: NSObject, ObservableObject {
         print("Starting native playback with URL: \(url.absoluteString.prefix(100))...")
         
         // Create AVURLAsset - no custom headers needed for backend/R2 URL
-        let asset = AVURLAsset(url: url)
+        let headers: [String: String] = [
+            "x-api-key": Secrets.apiSecret
+        ]
+        let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
 
         // Create player item
         let item = AVPlayerItem(asset: asset)

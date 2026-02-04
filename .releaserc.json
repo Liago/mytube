@@ -8,7 +8,9 @@
       "preset": "conventionalcommits"
     }],
     "@semantic-release/changelog",
-    "@semantic-release/npm",
+    ["@semantic-release/npm", {
+      "npmPublish": false
+    }],
     ["@semantic-release/exec", {
       "prepareCmd": "xcrun agvtool new-marketing-version ${nextRelease.version} && xcrun agvtool new-version ${nextRelease.version}"
     }],

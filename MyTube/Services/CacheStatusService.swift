@@ -34,8 +34,17 @@ class CacheStatusService: ObservableObject {
         // Debounce requests
         checkTask?.cancel()
         checkTask = Task {
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s debounce
-            await performBatchCheck()
+            do {
+                try await Task.sleep(nanoseconds: 500_000_000) // 0.5s debounce
+                
+                // Execute in a new Task to avoid cancellation if checkTask is cancelled
+                // (e.g. by a subsequent scheduleBatchCheck call) while the request is running.
+                Task {
+                    await performBatchCheck()
+                }
+            } catch {
+                // Task cancelled during sleep, do nothing
+            }
         }
     }
     

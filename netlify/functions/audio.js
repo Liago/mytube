@@ -30,7 +30,8 @@ exports.handler = async (event, context) => {
 		};
 	}
 
-	const fileKey = `${videoId}.m4a`;
+	// Cache busting: using _v2 to ignore previous corrupted (double duration) uploads
+	const fileKey = `${videoId}_v2.m4a`;
 	const publicUrl = `${R2_PUBLIC_DOMAIN}/${fileKey}`;
 
 	// 1. Check Cache
@@ -62,8 +63,42 @@ exports.handler = async (event, context) => {
 
 	// 2. Download to /tmp and Upload using standalone yt-dlp binary
 	try {
+		const jsonCookiePath = path.resolve(process.cwd(), 'cookies.json');
+		const netscapeCookiePath = path.resolve('/tmp', 'cookies.txt');
 		let activeCookiePath = undefined;
 		let hasCookies = false;
+
+		if (fs.existsSync(jsonCookiePath)) {
+			console.log('Found cookies.json, converting to Netscape format...');
+			try {
+				const jsonContent = fs.readFileSync(jsonCookiePath, 'utf8');
+				const cookies = JSON.parse(jsonContent);
+
+				let netscapeContent = "# Netscape HTTP Cookie File\n";
+				cookies.forEach(c => {
+					const domain = c.domain;
+					const includeSubdomains = domain.startsWith('.') ? 'TRUE' : 'FALSE';
+					const path = c.path;
+					const secure = c.secure ? 'TRUE' : 'FALSE';
+					const expiration = c.expirationDate ? Math.round(c.expirationDate) : 0;
+					const name = c.name;
+					const value = c.value;
+
+					netscapeContent += `${domain}\t${includeSubdomains}\t${path}\t${secure}\t${expiration}\t${name}\t${value}\n`;
+				});
+
+				fs.writeFileSync(netscapeCookiePath, netscapeContent);
+				console.log('Converted cookies saved to', netscapeCookiePath);
+				activeCookiePath = netscapeCookiePath;
+				hasCookies = true;
+			} catch (err) {
+				console.error("Error converting cookies:", err);
+				activeCookiePath = jsonCookiePath;
+				hasCookies = true;
+			}
+		} else {
+			console.log('WARNING: cookies.json not found at', jsonCookiePath);
+		}
 
 		// Prepare command: use local binary based on OS
 		const isLinux = process.platform === 'linux';
@@ -93,6 +128,10 @@ exports.handler = async (event, context) => {
 			'--no-warnings',
 			'--referer', 'https://www.youtube.com/'
 		];
+
+		if (hasCookies && activeCookiePath) {
+			args.push('--cookies', activeCookiePath);
+		}
 
 		console.log(`Spawning: ${binaryPath} ${args.join(' ')}`);
 

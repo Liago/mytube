@@ -1,0 +1,20 @@
+{
+  "branches": ["main"],
+  "plugins": [
+    ["@semantic-release/commit-analyzer", {
+      "preset": "conventionalcommits"
+    }],
+    ["@semantic-release/release-notes-generator", {
+      "preset": "conventionalcommits"
+    }],
+    "@semantic-release/changelog",
+    "@semantic-release/npm",
+    ["@semantic-release/exec", {
+      "prepareCmd": "xcrun agvtool new-marketing-version ${nextRelease.version} && xcrun agvtool new-version ${nextRelease.version}"
+    }],
+    ["@semantic-release/git", {
+      "assets": ["package.json", "package-lock.json", "CHANGELOG.md", "MyTube.xcodeproj/project.pbxproj", "MyTube/Info.plist"],
+      "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+    }]
+  ]
+}

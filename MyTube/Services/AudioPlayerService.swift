@@ -222,12 +222,19 @@ class AudioPlayerService: NSObject, ObservableObject {
         // Fetch audio stream URL from Backend API
         Task {
             do {
-                // Use localhost for simulator testing with 'netlify dev'
-                // User will need to replace with real Netlify URL after deployment
-                let backendURLString = "http://localhost:8888/.netlify/functions/audio?videoId=\(videoId)"
+                // Determine Backend URL based on environment
+                #if targetEnvironment(simulator)
+                let backendBaseURL = "http://localhost:8888"
+                print("AudioPlayerService: Running on Simulator -> Using Local Backend: \(backendBaseURL)")
+                #else
+                let backendBaseURL = "https://mytube-be.netlify.app"
+                print("AudioPlayerService: Running on Device -> Using Production Backend: \(backendBaseURL)")
+                #endif
+                
+                let backendURLString = "\(backendBaseURL)/.netlify/functions/audio?videoId=\(videoId)"
                 guard let url = URL(string: backendURLString) else { return }
 
-                print("AudioPlayerService: Requesting audio from Netlify: \(url.absoluteString)")
+                print("AudioPlayerService: Requesting audio from: \(url.absoluteString)")
 
                 // Verify we're still supposed to play this video
                 guard self.currentVideoId == videoId else { return }

@@ -1,3 +1,9 @@
+## [1.0.2](https://github.com/Liago/mytube/compare/v1.0.1...v1.0.2) (2026-02-04)
+
+### Bug Fixes
+
+* load YouTube cookies from R2 bucket instead of env var ([6cee942](https://github.com/Liago/mytube/commit/6cee942119cfa57cd80b90d78bb39804e376fa69))
+
 ## [1.0.1](https://github.com/Liago/mytube/compare/v1.0.0...v1.0.1) (2026-02-04)
 
 ### Bug Fixes

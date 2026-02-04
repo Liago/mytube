@@ -1,12 +1,15 @@
 import SwiftUI
 
 struct VideoCardView: View {
+    let videoId: String
     let title: String
     let channelName: String
     let date: Date?
     let duration: String?
     let thumbnailURL: URL?
     let action: () -> Void
+    
+    @ObservedObject private var cacheService = CacheStatusService.shared
     
     var body: some View {
         Button(action: action) {
@@ -60,9 +63,27 @@ struct VideoCardView: View {
                             Text("•")
                             Text(duration)
                         }
+                        
+                        if cacheService.isCached(videoId) {
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.icloud.fill")
+                                Text("Cached")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                            }
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.green.opacity(0.1))
+                            .cornerRadius(8)
+                        }
                     }
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+                    .task {
+                        cacheService.checkStatus(for: videoId)
+                    }
                     
                     // Description/Extra info placeholder (mimicking the "Lost city..." text)
                     // Since we don't have a specific description field in the list item effectively,
@@ -106,6 +127,7 @@ struct VideoCardView_Previews: PreviewProvider {
             Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all)
             
             VideoCardView(
+                videoId: "test_id",
                 title: "Petra, Jordan - A Journey Through History",
                 channelName: "Travel & History",
                 date: Date(),

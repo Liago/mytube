@@ -51,6 +51,7 @@ struct HomeView: View {
                         LazyVStack(spacing: 0) {
                             ForEach(viewModel.videos) { item in
                                 VideoCardView(
+                                    videoId: item.id,
                                     title: item.snippet.title,
                                     channelName: item.snippet.channelTitle ?? "",
                                     date: item.snippet.publishedAt.flatMap { DateUtils.parseISOString($0) } ?? (item.snippet.publishedAt != nil ? Date() : nil),

@@ -5,6 +5,7 @@ struct ChannelDetailView: View {
     let subscription: Subscription
     @StateObject private var viewModel = ChannelDetailViewModel()
     @ObservedObject private var videoStatusManager = VideoStatusManager.shared
+    @ObservedObject private var cacheService = CacheStatusService.shared
     
     var body: some View {
         Group {
@@ -130,6 +131,19 @@ struct ChannelDetailView: View {
                                             Text(DateUtils.formatISOString(video.snippet.publishedAt ?? ""))
                                                 .font(.caption2)
                                                 .foregroundColor(isPublishedToday ? .primary : .secondary)
+                                            
+                                            if CacheStatusService.shared.isCached(video.videoId) {
+                                                Image(systemName: "checkmark.icloud.fill")
+                                                    .font(.caption2)
+                                                    .foregroundColor(.green)
+                                                Text("Cached")
+                                                    .font(.caption2)
+                                                    .fontWeight(.bold)
+                                                    .foregroundColor(.green)
+                                            }
+                                        }
+                                        .task {
+                                            CacheStatusService.shared.checkStatus(for: video.videoId)
                                         }
                                     }
                                     

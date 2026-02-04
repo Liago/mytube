@@ -1,4 +1,4 @@
-const { S3Client, HeadObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, HeadObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -73,7 +73,6 @@ exports.handler = async (event, context) => {
 
 	// 2. Download to /tmp and Upload using standalone yt-dlp binary
 	try {
-		const jsonCookiePath = path.resolve(process.cwd(), 'cookies.json');
 		const netscapeCookiePath = path.resolve('/tmp', 'cookies.txt');
 		let activeCookiePath = undefined;
 		let hasCookies = false;
@@ -95,42 +94,49 @@ exports.handler = async (event, context) => {
 			return netscapeContent;
 		};
 
-		// Try loading cookies from YOUTUBE_COOKIES env var (base64-encoded JSON)
-		if (process.env.YOUTUBE_COOKIES) {
-			console.log('Found YOUTUBE_COOKIES env var, decoding and converting...');
-			try {
-				const decoded = Buffer.from(process.env.YOUTUBE_COOKIES, 'base64').toString('utf8');
-				const cookies = JSON.parse(decoded);
-				const netscapeContent = convertToNetscape(cookies);
-				fs.writeFileSync(netscapeCookiePath, netscapeContent);
-				console.log('Cookies from env var saved to', netscapeCookiePath);
-				activeCookiePath = netscapeCookiePath;
-				hasCookies = true;
-			} catch (err) {
-				console.error("Error processing YOUTUBE_COOKIES env var:", err.message);
+		// Try loading cookies from R2 bucket (_cookies.json)
+		try {
+			console.log('Loading cookies from R2 bucket...');
+			const cookieObj = await s3.send(new GetObjectCommand({
+				Bucket: R2_BUCKET_NAME,
+				Key: '_cookies.json',
+			}));
+			const cookieBody = await cookieObj.Body.transformToString();
+			const cookies = JSON.parse(cookieBody);
+			const netscapeContent = convertToNetscape(cookies);
+			fs.writeFileSync(netscapeCookiePath, netscapeContent);
+			console.log(`Cookies loaded from R2 (${cookies.length} cookies), saved to ${netscapeCookiePath}`);
+			activeCookiePath = netscapeCookiePath;
+			hasCookies = true;
+		} catch (err) {
+			if (err.name === 'NoSuchKey' || err.name === 'NotFound') {
+				console.log('No _cookies.json found in R2 bucket');
+			} else {
+				console.error('Error loading cookies from R2:', err.message);
 			}
 		}
 
-		// Fallback: try cookies.json file
-		if (!hasCookies && fs.existsSync(jsonCookiePath)) {
-			console.log('Found cookies.json, converting to Netscape format...');
-			try {
-				const jsonContent = fs.readFileSync(jsonCookiePath, 'utf8');
-				const cookies = JSON.parse(jsonContent);
-				const netscapeContent = convertToNetscape(cookies);
-				fs.writeFileSync(netscapeCookiePath, netscapeContent);
-				console.log('Converted cookies saved to', netscapeCookiePath);
-				activeCookiePath = netscapeCookiePath;
-				hasCookies = true;
-			} catch (err) {
-				console.error("Error converting cookies:", err);
-				activeCookiePath = jsonCookiePath;
-				hasCookies = true;
+		// Fallback: try local cookies.json file
+		if (!hasCookies) {
+			const jsonCookiePath = path.resolve(process.cwd(), 'cookies.json');
+			if (fs.existsSync(jsonCookiePath)) {
+				console.log('Found local cookies.json, converting to Netscape format...');
+				try {
+					const jsonContent = fs.readFileSync(jsonCookiePath, 'utf8');
+					const cookies = JSON.parse(jsonContent);
+					const netscapeContent = convertToNetscape(cookies);
+					fs.writeFileSync(netscapeCookiePath, netscapeContent);
+					console.log('Converted cookies saved to', netscapeCookiePath);
+					activeCookiePath = netscapeCookiePath;
+					hasCookies = true;
+				} catch (err) {
+					console.error("Error converting cookies:", err);
+				}
 			}
 		}
 
 		if (!hasCookies) {
-			console.log('WARNING: No cookies available. Set YOUTUBE_COOKIES env var (base64-encoded JSON) or provide cookies.json');
+			console.log('WARNING: No cookies available. Upload _cookies.json to R2 bucket or provide local cookies.json');
 		}
 
 		// Prepare command: use local binary based on OS

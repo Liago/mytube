@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @StateObject private var cookieService = CookieStatusService.shared
+    @ObservedObject private var authManager = AuthManager.shared
     
     var body: some View {
         NavigationView {
@@ -10,17 +11,44 @@ struct ProfileView: View {
                     // User Info Card
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Image(systemName: "person.circle.fill")
-                                .resizable()
-                                .frame(width: 50, height: 50)
-                                .foregroundColor(.accentColor)
-                            
-                            VStack(alignment: .leading) {
-                                Text("Utente Collegato")
-                                    .font(.headline)
-                                Text("Admin")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
+                            if let user = authManager.currentUser, let profile = user.profile {
+                                if let imageURL = profile.imageURL(withDimension: 100) {
+                                    AsyncImage(url: imageURL) { image in
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                    } placeholder: {
+                                        Image(systemName: "person.circle.fill")
+                                            .resizable()
+                                            .foregroundColor(.gray)
+                                    }
+                                    .frame(width: 50, height: 50)
+                                    .clipShape(Circle())
+                                } else {
+                                    Image(systemName: "person.circle.fill")
+                                        .resizable()
+                                        .frame(width: 50, height: 50)
+                                        .foregroundColor(.accentColor)
+                                }
+                                
+                                VStack(alignment: .leading) {
+                                    Text(profile.name)
+                                        .font(.headline)
+                                    Text(profile.email)
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                            } else {
+                                // Fallback or Not Logged In (shouldn't happen if guarded elsewhere)
+                                Image(systemName: "person.circle.fill")
+                                    .resizable()
+                                    .frame(width: 50, height: 50)
+                                    .foregroundColor(.gray)
+                                
+                                VStack(alignment: .leading) {
+                                    Text("Non collegato")
+                                        .font(.headline)
+                                }
                             }
                             Spacer()
                         }

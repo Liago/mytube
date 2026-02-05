@@ -160,13 +160,12 @@ exports.handler = async (event, context) => {
 
 		const args = [
 			`https://www.youtube.com/watch?v=${videoId}`,
-			'-f', '140',           // Force AAC/m4a (itag 140)
+			'-f', '140/bestaudio[ext=m4a]/bestaudio', // itag 140 preferred, fallback to best m4a/audio
 			'-o', tmpFilePath,     // Output to file in /tmp
 			'--force-overwrites',
 			'--no-warnings',
 			'--referer', 'https://www.youtube.com/',
 			'--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-			'--extractor-args', 'youtube:player_client=web',
 			'--write-info-json' // Extract metadata
 		];
 

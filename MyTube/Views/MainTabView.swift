@@ -17,6 +17,11 @@ struct MainTabView: View {
                 .tabItem {
                     Label("Playlists", systemImage: "music.note.list")
                 }
+            
+            ProfileView()
+                .tabItem {
+                    Label("Profile", systemImage: "person.crop.circle")
+                }
         }
     }
 }

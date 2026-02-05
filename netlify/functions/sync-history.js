@@ -16,7 +16,7 @@ const s3 = new S3Client({
 	},
 });
 
-const HISTORY_FILE_KEY = "history.json";
+const HISTORY_FILE_KEY = "system/history.json";
 
 exports.handler = async (event, context) => {
 	// 1. Security Check

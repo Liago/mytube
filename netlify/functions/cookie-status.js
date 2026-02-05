@@ -29,7 +29,7 @@ exports.handler = async (event, context) => {
 		// 1. Get File Metadata (Last Modified)
 		const headParams = {
 			Bucket: R2_BUCKET_NAME,
-			Key: '_cookies.json'
+			Key: 'system/_cookies.json'
 		};
 		let lastModified = null;
 		try {
@@ -42,7 +42,7 @@ exports.handler = async (event, context) => {
 		// 2. Get File Content
 		const cookieObj = await s3.send(new GetObjectCommand({
 			Bucket: R2_BUCKET_NAME,
-			Key: '_cookies.json',
+			Key: 'system/_cookies.json',
 		}));
 		const chunks = [];
 		for await (const chunk of cookieObj.Body) {

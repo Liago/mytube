@@ -11,7 +11,7 @@ const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "mytube-audio";
-const PREFS_FILE_KEY = "home_channels.json";
+const PREFS_FILE_KEY = "system/home_channels.json";
 
 const s3 = new S3Client({
 	region: "auto",
@@ -101,7 +101,7 @@ const prefetchHandler = async (event) => {
 			// The audio.js uses _cookies.json (JSON). runYtDlp logic in audio.js handled conversion.
 			// We should ideally fetch _cookies.json and convert.
 			// For brevity, let's assume we fetch `_cookies.json` and convert it here.
-			const cookieData = await s3.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: '_cookies.json' }));
+			const cookieData = await s3.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: 'system/_cookies.json' }));
 			const cookieJson = JSON.parse(await cookieData.Body.transformToString());
 
 			// Convert to Netscape

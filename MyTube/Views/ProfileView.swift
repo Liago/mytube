@@ -1,4 +1,5 @@
 import SwiftUI
+import GoogleSignIn
 
 struct ProfileView: View {
     @StateObject private var cookieService = CookieStatusService.shared

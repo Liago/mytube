@@ -57,21 +57,36 @@ exports.handler = async (event, context) => {
 		let validCookies = 0;
 		const now = Date.now() / 1000; // Unix timestamp in seconds
 
+		// Priority cookies for expiration check
+		const PRIORITY_COOKIES = ['__Secure-1PSID', 'LOGIN_INFO'];
+		let priorityExpiration = null;
+
 		cookies.forEach(c => {
 			if (c.expirationDate) {
 				// If expiration is in the past, it's expired
 				if (c.expirationDate > now) {
 					validCookies++;
-				}
 
-				if (earliestExpiration === null || c.expirationDate < earliestExpiration) {
-					earliestExpiration = c.expirationDate;
+					// Track priority cookie expiration
+					if (PRIORITY_COOKIES.includes(c.name)) {
+						if (priorityExpiration === null || c.expirationDate < priorityExpiration) {
+							priorityExpiration = c.expirationDate;
+						}
+					}
+
+					// Track general earliest valid expiration
+					if (earliestExpiration === null || c.expirationDate < earliestExpiration) {
+						earliestExpiration = c.expirationDate;
+					}
 				}
 			} else {
 				// Session cookie or no expiration
 				validCookies++;
 			}
 		});
+
+		// Use priority expiration if available, otherwise general earliest
+		const finalExpiration = priorityExpiration || earliestExpiration;
 
 		// Determine Status
 		let status = "Valid";
@@ -80,7 +95,7 @@ exports.handler = async (event, context) => {
 
 		if (validCookies === 0) {
 			status = "Expired";
-		} else if (earliestExpiration && (earliestExpiration - now) < threeDays) {
+		} else if (finalExpiration && (finalExpiration - now) < threeDays) {
 			status = "Expiring Soon";
 		}
 
@@ -89,7 +104,8 @@ exports.handler = async (event, context) => {
 			body: JSON.stringify({
 				totalCookies: totalCookies,
 				validCookies: validCookies,
-				earliestExpiration: earliestExpiration, // Unix timestamp
+				validCookies: validCookies,
+				earliestExpiration: finalExpiration, // Unix timestamp
 				lastUploaded: lastModified, // ISO string
 				status: status
 			}),

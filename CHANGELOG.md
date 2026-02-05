@@ -1,3 +1,9 @@
+## [1.7.0](https://github.com/Liago/mytube/compare/v1.6.0...v1.7.0) (2026-02-05)
+
+### Features
+
+* adds Google session status card ([4a6bee9](https://github.com/Liago/mytube/commit/4a6bee94d9c2fd558ad23f339736cfb6da480d66))
+
 ## [1.6.0](https://github.com/Liago/mytube/compare/v1.5.0...v1.6.0) (2026-02-05)
 
 ### Features

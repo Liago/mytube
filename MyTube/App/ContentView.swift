@@ -8,7 +8,10 @@ struct ContentView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             // Main Application Content
-            if authManager.isAuthenticated {
+            if authManager.isLoading {
+                SplashScreen()
+                    .transition(.opacity)
+            } else if authManager.isAuthenticated {
                 MainTabView()
                     .padding(.bottom, playerService.currentTitle.isEmpty ? 0 : 60)
             } else {

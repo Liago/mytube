@@ -8,6 +8,7 @@ class AuthManager: ObservableObject {
     static let shared = AuthManager()
     
     @Published var isAuthenticated: Bool = false
+    @Published var isLoading: Bool = true // Default to true for splash screen
     @Published var currentUser: GIDGoogleUser?
     @Published var errorMessage: String?
     
@@ -28,6 +29,10 @@ class AuthManager: ObservableObject {
                 // Not signed in or error restoring
                 print("Error restoring sign in: \(error.localizedDescription)")
                 self?.isAuthenticated = false
+            }
+            // Transition finished, hide splash screen
+            withAnimation {
+                self?.isLoading = false
             }
         }
     }

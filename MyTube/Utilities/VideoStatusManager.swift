@@ -221,5 +221,39 @@ class VideoStatusManager: ObservableObject {
         if let encoded = try? JSONEncoder().encode(homeSubscriptions) {
             UserDefaults.standard.set(encoded, forKey: homeSubscriptionsKey)
         }
+        syncPreferences()
+    }
+    
+    // MARK: - Preferences Sync
+    
+    func syncPreferences() {
+        Task {
+            do {
+                #if targetEnvironment(simulator)
+                let baseURL = "http://localhost:8888"
+                #else
+                let baseURL = "https://mytube-be.netlify.app"
+                #endif
+                
+                let url = URL(string: "\(baseURL)/.netlify/functions/sync-preferences")!
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue(Secrets.apiSecret, forHTTPHeaderField: "x-api-key")
+                
+                let payload = ["channels": Array(homeSubscriptions)]
+                request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+                
+                let (_, response) = try await URLSession.shared.data(for: request)
+                
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                    print("VideoStatusManager: Preferences synced successfully.")
+                } else {
+                    print("VideoStatusManager: Preferences sync failed (server error).")
+                }
+            } catch {
+                print("VideoStatusManager: Preferences sync failed: \(error)")
+            }
+        }
     }
 }

@@ -1,3 +1,9 @@
+## [1.2.1](https://github.com/Liago/mytube/compare/v1.2.0...v1.2.1) (2026-02-05)
+
+### Bug Fixes
+
+* prioritizes cookie expiration status ([056fe64](https://github.com/Liago/mytube/commit/056fe64c4c4df4c31e577070e6eabcca6abb25a9))
+
 ## [1.2.0](https://github.com/Liago/mytube/compare/v1.1.0...v1.2.0) (2026-02-05)
 
 ### Features

@@ -1,6 +1,6 @@
 {
   "name": "mytube-backend",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Netlify Functions backend for MyTube",
   "main": "netlify/functions/audio.js",
   "scripts": {

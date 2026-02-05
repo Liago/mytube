@@ -162,42 +162,75 @@ exports.handler = async (event, context) => {
 			throw new Error(`yt-dlp binary not found at ${binaryPath}`);
 		}
 
-		const args = [
-			`https://www.youtube.com/watch?v=${videoId}`,
-			'-f', '140/bestaudio[ext=m4a]/bestaudio', // itag 140 preferred, fallback to best m4a/audio
-			'-o', tmpFilePath,     // Output to file in /tmp
-			'--force-overwrites',
-			'--no-warnings',
-			'--referer', 'https://www.youtube.com/',
-			'--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-			'--write-info-json' // Extract metadata
-		];
+		// Helper function to run yt-dlp
+		const runYtDlp = async (useCookies) => {
+			const args = [
+				`https://www.youtube.com/watch?v=${videoId}`,
+				'-f', '140/bestaudio[ext=m4a]/bestaudio',
+				'-o', tmpFilePath,
+				'--force-overwrites',
+				'--no-warnings',
+				'--referer', 'https://www.youtube.com/',
+				'--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+				'--write-info-json'
+			];
 
-		if (hasCookies && activeCookiePath) {
-			args.push('--cookies', activeCookiePath);
+			if (useCookies && hasCookies && activeCookiePath) {
+				args.push('--cookies', activeCookiePath);
+			}
+
+			console.log(`Spawning (useCookies=${useCookies}): ${binaryPath} ${args.join(' ')}`);
+
+			const child = spawn(binaryPath, args, {
+				stdio: ['ignore', 'pipe', 'pipe']
+			});
+
+			let stderrOutput = '';
+			child.stderr.on('data', (data) => {
+				stderrOutput += data.toString();
+				console.error(`yt-dlp stderr: ${data}`);
+			});
+
+			return new Promise((resolve, reject) => {
+				child.on('exit', (code) => {
+					if (code === 0) resolve();
+					else reject(new Error(`yt-dlp exited with code ${code}. Stderr: ${stderrOutput}`));
+				});
+				child.on('error', (err) => reject(err));
+			});
+		};
+
+		// Execute with retry logic
+		let downloadSuccess = false;
+		let downloadError = null;
+
+		// 1. Try with cookies if available
+		if (hasCookies) {
+			try {
+				console.log(`Attempting download WITH cookies for ${videoId}...`);
+				await runYtDlp(true);
+				downloadSuccess = true;
+			} catch (err) {
+				console.warn(`Download with cookies failed: ${err.message}`);
+				console.log("Retrying WITHOUT cookies...");
+			}
 		}
 
-		console.log(`Spawning: ${binaryPath} ${args.join(' ')}`);
+		// 2. Try without cookies if (not attempted yet) OR (attempted and failed)
+		if (!downloadSuccess) {
+			try {
+				console.log(`Attempting download WITHOUT cookies for ${videoId}...`);
+				await runYtDlp(false);
+				downloadSuccess = true;
+			} catch (err) {
+				console.error(`Download without cookies failed: ${err.message}`);
+				downloadError = err;
+			}
+		}
 
-		const child = spawn(binaryPath, args, {
-			stdio: ['ignore', 'pipe', 'pipe']
-		});
-
-		// Handle stderr
-		let stderrOutput = '';
-		child.stderr.on('data', (data) => {
-			stderrOutput += data.toString();
-			console.error(`yt-dlp stderr: ${data}`);
-		});
-
-		// Wait for download to finish
-		await new Promise((resolve, reject) => {
-			child.on('exit', (code) => {
-				if (code === 0) resolve();
-				else reject(new Error(`yt-dlp exited with code ${code}. Stderr: ${stderrOutput}`));
-			});
-			child.on('error', (err) => reject(err));
-		});
+		if (!downloadSuccess) {
+			throw downloadError || new Error("Download failed");
+		}
 
 		// Verify file exists
 		if (!fs.existsSync(tmpFilePath)) {

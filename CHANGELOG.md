@@ -1,3 +1,9 @@
+## [1.0.4](https://github.com/Liago/mytube/compare/v1.0.3...v1.0.4) (2026-02-05)
+
+### Bug Fixes
+
+* use stream chunks to read R2 cookie response body ([77db169](https://github.com/Liago/mytube/commit/77db169bef1e6cd2392d7767934c6190f99420ba))
+
 ## [1.0.3](https://github.com/Liago/mytube/compare/v1.0.2...v1.0.3) (2026-02-05)
 
 ### Bug Fixes

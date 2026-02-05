@@ -99,7 +99,7 @@ exports.handler = async (event, context) => {
 			console.log('Loading cookies from R2 bucket...');
 			const cookieObj = await s3.send(new GetObjectCommand({
 				Bucket: R2_BUCKET_NAME,
-				Key: '_cookies.json',
+				Key: 'system/_cookies.json',
 			}));
 			const chunks = [];
 			for await (const chunk of cookieObj.Body) {

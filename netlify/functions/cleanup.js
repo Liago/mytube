@@ -35,8 +35,12 @@ const handler = async (event, context) => {
 			const response = await s3.send(command);
 			const contents = response.Contents || [];
 
-			// Filter old files
-			const oldFiles = contents.filter(obj => obj.LastModified < sevenDaysAgo);
+			// Filter old files, preserving "system/" directory
+			const oldFiles = contents.filter(obj => {
+				const isSystemFile = obj.Key.startsWith("system/");
+				const isOld = obj.LastModified < sevenDaysAgo;
+				return !isSystemFile && isOld;
+			});
 
 			if (oldFiles.length > 0) {
 				const deleteParams = {

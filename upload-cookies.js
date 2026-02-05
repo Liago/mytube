@@ -59,12 +59,12 @@ async function main() {
 
 	await s3.send(new PutObjectCommand({
 		Bucket: R2_BUCKET_NAME,
-		Key: '_cookies.json',
+		Key: 'system/_cookies.json',
 		Body: content,
 		ContentType: 'application/json',
 	}));
 
-	console.log(`Uploaded to R2 bucket "${R2_BUCKET_NAME}" as _cookies.json`);
+	console.log(`Uploaded to R2 bucket "${R2_BUCKET_NAME}" as system/_cookies.json`);
 }
 
 main().catch(err => {

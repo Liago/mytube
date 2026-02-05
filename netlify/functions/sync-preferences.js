@@ -16,7 +16,7 @@ const s3 = new S3Client({
 	},
 });
 
-const PREFS_FILE_KEY = "home_channels.json";
+const PREFS_FILE_KEY = "system/home_channels.json";
 
 exports.handler = async (event, context) => {
 	// 1. Security Check

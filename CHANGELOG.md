@@ -1,3 +1,9 @@
+## [1.6.0](https://github.com/Liago/mytube/compare/v1.5.0...v1.6.0) (2026-02-05)
+
+### Features
+
+* introduces splash screen during authentication ([0c97778](https://github.com/Liago/mytube/commit/0c97778dbcf19d8c2a5dc5b9f4ed09455301fcca))
+
 ## [1.5.0](https://github.com/Liago/mytube/compare/v1.4.0...v1.5.0) (2026-02-05)
 
 ### Features

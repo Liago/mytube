@@ -1,3 +1,11 @@
+## [1.2.0](https://github.com/Liago/mytube/compare/v1.1.0...v1.2.0) (2026-02-05)
+
+### Features
+
+* **backend:** Add Netlify function for cookie status API ([0d03317](https://github.com/Liago/mytube/commit/0d03317a3015a53fe79453d826b164a63d655564))
+* **ios:** Add ProfileView with cookie status and tab integration ([a5bb83d](https://github.com/Liago/mytube/commit/a5bb83dfc8dfeca4ccd4e0fd564f7e1241b92096))
+* **ios:** Implement CookieStatusService and expiration notifications ([befc1c5](https://github.com/Liago/mytube/commit/befc1c5cd85fbe654dd8837a1e25770308a4dd26))
+
 ## [1.1.0](https://github.com/Liago/mytube/compare/v1.0.4...v1.1.0) (2026-02-05)
 
 ### Features

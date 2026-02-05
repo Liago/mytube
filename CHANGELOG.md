@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/Liago/mytube/compare/v1.2.1...v1.3.0) (2026-02-05)
+
+### Features
+
+* displays user profile information ([ce13c2c](https://github.com/Liago/mytube/commit/ce13c2c927aed08dd4a7b8b2751ecb8c5ca5c222))
+
 ## [1.2.1](https://github.com/Liago/mytube/compare/v1.2.0...v1.2.1) (2026-02-05)
 
 ### Bug Fixes

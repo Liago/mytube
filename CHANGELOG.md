@@ -1,3 +1,9 @@
+## [1.0.3](https://github.com/Liago/mytube/compare/v1.0.2...v1.0.3) (2026-02-05)
+
+### Bug Fixes
+
+* use format fallback chain and remove player_client=web ([6460d50](https://github.com/Liago/mytube/commit/6460d502e613720e13ad531791f681f135173ceb))
+
 ## [1.0.2](https://github.com/Liago/mytube/compare/v1.0.1...v1.0.2) (2026-02-04)
 
 ### Bug Fixes

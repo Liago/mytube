@@ -1,3 +1,9 @@
+## [1.5.0](https://github.com/Liago/mytube/compare/v1.4.0...v1.5.0) (2026-02-05)
+
+### Features
+
+* adds background video prefetching and preferences syncing ([7085182](https://github.com/Liago/mytube/commit/7085182e69063a91faad4df04c79f14c4f92b6be))
+
 ## [1.4.0](https://github.com/Liago/mytube/compare/v1.3.0...v1.4.0) (2026-02-05)
 
 ### Features

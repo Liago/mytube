@@ -1,3 +1,21 @@
+## [1.0.3](https://github.com/Liago/mytube/compare/v1.0.2...v1.0.3) (2026-02-05)
+
+### Bug Fixes
+
+* use format fallback chain and remove player_client=web ([6460d50](https://github.com/Liago/mytube/commit/6460d502e613720e13ad531791f681f135173ceb))
+
+## [1.0.2](https://github.com/Liago/mytube/compare/v1.0.1...v1.0.2) (2026-02-04)
+
+### Bug Fixes
+
+* load YouTube cookies from R2 bucket instead of env var ([6cee942](https://github.com/Liago/mytube/commit/6cee942119cfa57cd80b90d78bb39804e376fa69))
+
+## [1.0.1](https://github.com/Liago/mytube/compare/v1.0.0...v1.0.1) (2026-02-04)
+
+### Bug Fixes
+
+* add YOUTUBE_COOKIES env var support and improve YouTube bot evasion ([2c0d622](https://github.com/Liago/mytube/commit/2c0d622c885dfcdd30c8efabb01becc42da0974e))
+
 ## 1.0.0 (2026-02-04)
 
 ### Features

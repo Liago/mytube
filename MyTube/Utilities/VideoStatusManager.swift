@@ -41,6 +41,9 @@ class VideoStatusManager: ObservableObject {
            let decoded = try? JSONDecoder().decode(Set<String>.self, from: data) {
             homeSubscriptions = decoded
         }
+        
+        // Initial Sync
+        syncHistory()
     }
     
     private func saveData() {

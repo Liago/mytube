@@ -1,3 +1,11 @@
+## [1.4.0](https://github.com/Liago/mytube/compare/v1.3.0...v1.4.0) (2026-02-05)
+
+### Features
+
+* Add cloud sync mechanism to VideoStatusManager ([8b51f98](https://github.com/Liago/mytube/commit/8b51f9874259eb85efdee509834c1159e3f22c21))
+* Implement Netlify function for video history cloud sync ([aef290e](https://github.com/Liago/mytube/commit/aef290ed8f3bdd48005ec5358bd9f86fc36f6577))
+* Trigger initial video history sync on manager initialization ([443d6ea](https://github.com/Liago/mytube/commit/443d6eac4c9b89459e988bfe79bd02b747d2eea7))
+
 ## [1.3.0](https://github.com/Liago/mytube/compare/v1.2.1...v1.3.0) (2026-02-05)
 
 ### Features

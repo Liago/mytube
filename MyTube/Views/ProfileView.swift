@@ -58,6 +58,75 @@ struct ProfileView: View {
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(12)
                     
+                    // Google Session Card
+                    if let user = authManager.currentUser {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Sessione Google")
+                                .font(.headline)
+                            
+                            let accessToken = user.accessToken
+                            // Safely handle expirationDate whether it's Date or Date?
+                            let expirationDate: Date? = accessToken.expirationDate
+                            
+                            HStack {
+                                Text("Stato Token:")
+                                Spacer()
+                                if let date = expirationDate {
+                                    let isValid = date > Date()
+                                    Text(isValid ? "Valido" : "Scaduto")
+                                        .bold()
+                                        .foregroundColor(isValid ? .green : .red)
+                                } else {
+                                    Text("Sconosciuto")
+                                        .foregroundColor(.orange)
+                                }
+                            }
+                            
+                            Divider()
+                            
+                            HStack {
+                                Text("Scade tra:")
+                                Spacer()
+                                if let date = expirationDate {
+                                    if date > Date() {
+                                        let minutesLeft = Int(date.timeIntervalSinceNow / 60)
+                                        Text("\(minutesLeft) min")
+                                            .foregroundColor(minutesLeft < 5 ? .red : .primary)
+                                    } else {
+                                        Text("Scaduto")
+                                            .foregroundColor(.red)
+                                    }
+                                } else {
+                                    Text("--")
+                                }
+                            }
+                            
+                            HStack {
+                                Text("Refresh Token:")
+                                Spacer()
+                                // refreshToken is non-optional in this SDK version
+                                if !user.refreshToken.tokenString.isEmpty {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                } else {
+                                    Text("Assente")
+                                        .foregroundColor(.orange)
+                                        .font(.caption)
+                                }
+                            }
+                            
+                            HStack {
+                                Text("Scopes:")
+                                Spacer()
+                                Text("\(user.grantedScopes?.count ?? 0) concessi")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(12)
+                    }
+                    
                     // Cookie Status Card
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Stato Cookies R2")

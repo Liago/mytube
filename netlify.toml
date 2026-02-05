@@ -3,7 +3,7 @@
   functions = "netlify/functions"
 
 [functions]
-  external_node_modules = ["@aws-sdk/client-s3", "@aws-sdk/lib-storage"]
+  external_node_modules = ["@aws-sdk/client-s3", "@aws-sdk/lib-storage", "rss-parser"]
   included_files = ["yt-dlp", "yt-dlp-linux", "cookies.json"]
   node_bundler = "esbuild"
 

@@ -101,7 +101,11 @@ exports.handler = async (event, context) => {
 				Bucket: R2_BUCKET_NAME,
 				Key: '_cookies.json',
 			}));
-			const cookieBody = await cookieObj.Body.transformToString();
+			const chunks = [];
+			for await (const chunk of cookieObj.Body) {
+				chunks.push(chunk);
+			}
+			const cookieBody = Buffer.concat(chunks).toString('utf8');
 			const cookies = JSON.parse(cookieBody);
 			const netscapeContent = convertToNetscape(cookies);
 			fs.writeFileSync(netscapeCookiePath, netscapeContent);

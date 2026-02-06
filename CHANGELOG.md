@@ -1,3 +1,9 @@
+## [1.7.3](https://github.com/Liago/mytube/compare/v1.7.2...v1.7.3) (2026-02-06)
+
+### Bug Fixes
+
+* removes redundant youtube-dl options ([731603f](https://github.com/Liago/mytube/commit/731603ff2195c706573855b2cfc5abdaa344b099))
+
 ## [1.7.2](https://github.com/Liago/mytube/compare/v1.7.1...v1.7.2) (2026-02-06)
 
 ### Bug Fixes

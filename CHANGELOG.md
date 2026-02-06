@@ -1,3 +1,9 @@
+## [1.7.1](https://github.com/Liago/mytube/compare/v1.7.0...v1.7.1) (2026-02-06)
+
+### Bug Fixes
+
+* updates youtube-dl user agent ([383564a](https://github.com/Liago/mytube/commit/383564a249f6a4159389b0c749d05df507094375))
+
 ## [1.7.0](https://github.com/Liago/mytube/compare/v1.6.0...v1.7.0) (2026-02-05)
 
 ### Features

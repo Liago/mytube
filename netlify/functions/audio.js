@@ -140,7 +140,7 @@ exports.handler = async (event, context) => {
 		}
 
 		if (!hasCookies) {
-			console.log('WARNING: No cookies available. Upload _cookies.json to R2 bucket or provide local cookies.json');
+			console.log('WARNING: No cookies available.');
 		}
 
 		// Prepare command: use local binary based on OS
@@ -179,6 +179,10 @@ exports.handler = async (event, context) => {
 			if (useCookies && hasCookies && activeCookiePath) {
 				args.push('--cookies', activeCookiePath);
 			}
+
+			// Client Impersonation to bypass "Sign in to confirm you're not a bot"
+			// Using Android client often avoids the strict web-based checks
+			args.push('--extractor-args', 'youtube:player_client=android');
 
 			console.log(`Spawning (useCookies=${useCookies}): ${binaryPath} ${args.join(' ')}`);
 
@@ -291,6 +295,11 @@ exports.handler = async (event, context) => {
 		} catch (e) {
 			console.warn("Failed to cleanup tmp file:", e);
 		}
+
+		// Cleanup cache
+		try {
+			// fs.rmSync(cacheDir, { recursive: true, force: true });
+		} catch (e) { }
 
 		console.log(`Upload complete for ${videoId}`);
 

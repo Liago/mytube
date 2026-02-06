@@ -179,8 +179,8 @@ exports.handler = async (event, context) => {
 			}
 
 			// Client Impersonation to bypass "Sign in to confirm you're not a bot"
-			// Android failed (IP flagged?), trying iOS
-			args.push('--extractor-args', 'youtube:player_client=ios');
+			// iOS failed, trying TV client (often less restrictive for server IPs)
+			args.push('--extractor-args', 'youtube:player_client=tv');
 			args.push('--no-cache-dir');
 
 			console.log(`Spawning (useCookies=${useCookies}): ${binaryPath} ${args.join(' ')}`);

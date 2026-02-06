@@ -1,3 +1,9 @@
+## [1.7.2](https://github.com/Liago/mytube/compare/v1.7.1...v1.7.2) (2026-02-06)
+
+### Bug Fixes
+
+* enhances audio extraction robustness ([fbc5861](https://github.com/Liago/mytube/commit/fbc5861d7585d1a31b6faa1c2821d04ffead56fa))
+
 ## [1.7.1](https://github.com/Liago/mytube/compare/v1.7.0...v1.7.1) (2026-02-06)
 
 ### Bug Fixes

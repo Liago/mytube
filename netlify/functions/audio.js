@@ -179,9 +179,8 @@ exports.handler = async (event, context) => {
 			}
 
 			// Client Impersonation to bypass "Sign in to confirm you're not a bot"
-			// Strategy: iOS Client + Force IPv4 + Proxy Support
-			args.push('--extractor-args', 'youtube:player_client=ios');
-			args.push('--force-ipv4');
+			// Strategy: TV Embedded (often permissive) + Standard Network (IPv6 might be cleaner than IPv4)
+			args.push('--extractor-args', 'youtube:player_client=tv_embedded');
 			args.push('--no-cache-dir');
 
 			if (process.env.PROXY_URL && !process.env.PROXY_URL.includes('user:pass@host:port')) {

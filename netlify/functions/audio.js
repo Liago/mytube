@@ -179,10 +179,15 @@ exports.handler = async (event, context) => {
 			}
 
 			// Client Impersonation to bypass "Sign in to confirm you're not a bot"
-			// TV failed, trying Web Embedded + IPv4
-			args.push('--extractor-args', 'youtube:player_client=web_embedded');
+			// Strategy: iOS Client + Force IPv4 + Proxy Support
+			args.push('--extractor-args', 'youtube:player_client=ios');
 			args.push('--force-ipv4');
 			args.push('--no-cache-dir');
+
+			if (process.env.PROXY_URL) {
+				console.log('Using Proxy:', process.env.PROXY_URL);
+				args.push('--proxy', process.env.PROXY_URL);
+			}
 
 			console.log(`Spawning (useCookies=${useCookies}): ${binaryPath} ${args.join(' ')}`);
 

@@ -1,3 +1,9 @@
+## [1.7.4](https://github.com/Liago/mytube/compare/v1.7.3...v1.7.4) (2026-02-06)
+
+### Bug Fixes
+
+* switch to iOS client impersonation to bypass bot detection ([55d1623](https://github.com/Liago/mytube/commit/55d16233636cb22834f6d87c8891c5504124400a))
+
 ## [1.7.3](https://github.com/Liago/mytube/compare/v1.7.2...v1.7.3) (2026-02-06)
 
 ### Bug Fixes

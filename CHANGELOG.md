@@ -1,3 +1,9 @@
+## [1.7.5](https://github.com/Liago/mytube/compare/v1.7.4...v1.7.5) (2026-02-06)
+
+### Bug Fixes
+
+* switch to TV ([839ce8b](https://github.com/Liago/mytube/commit/839ce8b504d7387afbb0414dff9ac79de708c140))
+
 ## [1.7.4](https://github.com/Liago/mytube/compare/v1.7.3...v1.7.4) (2026-02-06)
 
 ### Bug Fixes

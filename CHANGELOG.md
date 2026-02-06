@@ -1,3 +1,9 @@
+## [1.8.0](https://github.com/Liago/mytube/compare/v1.7.5...v1.8.0) (2026-02-06)
+
+### Features
+
+* improves YouTube extraction and adds proxy support ([d46e58e](https://github.com/Liago/mytube/commit/d46e58e88f4b701ed28b16c7ebebda52572c2bc5))
+
 ## [1.7.5](https://github.com/Liago/mytube/compare/v1.7.4...v1.7.5) (2026-02-06)
 
 ### Bug Fixes

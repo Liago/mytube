@@ -184,9 +184,11 @@ exports.handler = async (event, context) => {
 			args.push('--force-ipv4');
 			args.push('--no-cache-dir');
 
-			if (process.env.PROXY_URL) {
+			if (process.env.PROXY_URL && !process.env.PROXY_URL.includes('user:pass@host:port')) {
 				console.log('Using Proxy:', process.env.PROXY_URL);
 				args.push('--proxy', process.env.PROXY_URL);
+			} else if (process.env.PROXY_URL) {
+				console.warn('Ignoring invalid/placeholder PROXY_URL:', process.env.PROXY_URL);
 			}
 
 			console.log(`Spawning (useCookies=${useCookies}): ${binaryPath} ${args.join(' ')}`);

@@ -179,8 +179,9 @@ exports.handler = async (event, context) => {
 			}
 
 			// Client Impersonation to bypass "Sign in to confirm you're not a bot"
-			// Using Android client often avoids the strict web-based checks
-			args.push('--extractor-args', 'youtube:player_client=android');
+			// Android failed (IP flagged?), trying iOS
+			args.push('--extractor-args', 'youtube:player_client=ios');
+			args.push('--no-cache-dir');
 
 			console.log(`Spawning (useCookies=${useCookies}): ${binaryPath} ${args.join(' ')}`);
 

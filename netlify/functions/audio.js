@@ -162,37 +162,6 @@ exports.handler = async (event, context) => {
 			throw new Error(`yt-dlp binary not found at ${binaryPath}`);
 		}
 
-		// --- OAuth Token Support ---
-		let hasOAuth = false;
-		let oauthCacheDir = null;
-		try {
-			console.log('Checking for OAuth token in R2...');
-			const oauthObj = await s3.send(new GetObjectCommand({
-				Bucket: R2_BUCKET_NAME,
-				Key: 'system/_oauth_token.json',
-			}));
-			const oauthChunks = [];
-			for await (const chunk of oauthObj.Body) {
-				oauthChunks.push(chunk);
-			}
-			const oauthBody = Buffer.concat(oauthChunks).toString('utf8');
-			// yt-dlp stores OAuth tokens in its cache dir under youtube-nsig/
-			// We recreate the cache structure in /tmp
-			oauthCacheDir = '/tmp/yt-dlp-cache';
-			const oauthTokenDir = path.join(oauthCacheDir, 'youtube-nsig');
-			fs.mkdirSync(oauthTokenDir, { recursive: true });
-			const oauthTokenPath = path.join(oauthCacheDir, 'youtube-oauth2-token.json');
-			fs.writeFileSync(oauthTokenPath, oauthBody);
-			hasOAuth = true;
-			console.log('OAuth token loaded from R2');
-		} catch (err) {
-			if (err.name === 'NoSuchKey' || err.name === 'NotFound') {
-				console.log('No OAuth token found in R2 (optional)');
-			} else {
-				console.warn('Error loading OAuth token:', err.message);
-			}
-		}
-
 		// Realistic User-Agent to avoid fingerprinting as a bot
 		const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -200,7 +169,7 @@ exports.handler = async (event, context) => {
 		const PLAYER_CLIENTS = ['tv_embedded', 'web_creator', 'mweb', 'android', 'ios', 'web'];
 
 		// Helper function to run yt-dlp with a specific strategy
-		const runYtDlp = async (useCookies, playerClient, useOAuth) => {
+		const runYtDlp = async (useCookies, playerClient) => {
 			const args = [
 				`https://www.youtube.com/watch?v=${videoId}`,
 				'-f', '140/bestaudio[ext=m4a]/bestaudio',
@@ -208,24 +177,17 @@ exports.handler = async (event, context) => {
 				'--force-overwrites',
 				'--no-warnings',
 				'--write-info-json',
-				'--js-runtimes', `node:${process.execPath}`
+				'--js-runtimes', `node:${process.execPath}`,
+				'--no-cache-dir'
 			];
 
-			// Authentication: OAuth takes priority over cookies
-			if (useOAuth && hasOAuth && oauthCacheDir) {
-				args.push('--username', 'oauth2', '--password', '');
-				args.push('--cache-dir', oauthCacheDir);
-			} else {
-				args.push('--no-cache-dir');
-				if (useCookies && hasCookies && activeCookiePath) {
-					args.push('--cookies', activeCookiePath);
-				}
+			// Cookie authentication
+			if (useCookies && hasCookies && activeCookiePath) {
+				args.push('--cookies', activeCookiePath);
 			}
 
 			// Player client impersonation
 			args.push('--extractor-args', `youtube:player_client=${playerClient}`);
-
-			// Note: --sleep-interval removed to avoid Netlify function timeout
 
 			// Realistic User-Agent
 			args.push('--user-agent', CHROME_UA);
@@ -241,7 +203,7 @@ exports.handler = async (event, context) => {
 				console.warn('Ignoring invalid/placeholder PROXY_URL:', process.env.PROXY_URL);
 			}
 
-			const strategyLabel = `client=${playerClient}, cookies=${useCookies}, oauth=${useOAuth}`;
+			const strategyLabel = `client=${playerClient}, cookies=${useCookies}`;
 			console.log(`Spawning (${strategyLabel}): ${binaryPath} ${args.join(' ')}`);
 
 			const child = spawn(binaryPath, args, {
@@ -268,26 +230,19 @@ exports.handler = async (event, context) => {
 		let downloadError = null;
 		let attemptCount = 0;
 
-		// Build strategy list: try each player_client, with auth modes
+		// Build strategy list: try each player_client with cookies first, then without
 		const strategies = [];
 
-		// Phase 1: Try OAuth (if available) with top clients
-		if (hasOAuth) {
-			for (const client of PLAYER_CLIENTS.slice(0, 3)) {
-				strategies.push({ useCookies: false, playerClient: client, useOAuth: true });
-			}
-		}
-
-		// Phase 2: Try cookies (if available) with all clients
+		// Phase 1: Try cookies (if available) with all clients
 		if (hasCookies) {
 			for (const client of PLAYER_CLIENTS) {
-				strategies.push({ useCookies: true, playerClient: client, useOAuth: false });
+				strategies.push({ useCookies: true, playerClient: client });
 			}
 		}
 
-		// Phase 3: Try without any auth with all clients
+		// Phase 2: Try without cookies with all clients
 		for (const client of PLAYER_CLIENTS) {
-			strategies.push({ useCookies: false, playerClient: client, useOAuth: false });
+			strategies.push({ useCookies: false, playerClient: client });
 		}
 
 		// Cap strategies to avoid Netlify function timeout (26s limit)
@@ -298,10 +253,10 @@ exports.handler = async (event, context) => {
 		for (const strategy of cappedStrategies) {
 			if (downloadSuccess) break;
 			attemptCount++;
-			const label = `[${attemptCount}/${cappedStrategies.length}] client=${strategy.playerClient}, cookies=${strategy.useCookies}, oauth=${strategy.useOAuth}`;
+			const label = `[${attemptCount}/${cappedStrategies.length}] client=${strategy.playerClient}, cookies=${strategy.useCookies}`;
 			try {
 				console.log(`Strategy ${label}: attempting...`);
-				await runYtDlp(strategy.useCookies, strategy.playerClient, strategy.useOAuth);
+				await runYtDlp(strategy.useCookies, strategy.playerClient);
 				downloadSuccess = true;
 				console.log(`Strategy ${label}: SUCCESS`);
 			} catch (err) {

@@ -162,8 +162,45 @@ exports.handler = async (event, context) => {
 			throw new Error(`yt-dlp binary not found at ${binaryPath}`);
 		}
 
-		// Helper function to run yt-dlp
-		const runYtDlp = async (useCookies) => {
+		// --- OAuth Token Support ---
+		let hasOAuth = false;
+		let oauthCacheDir = null;
+		try {
+			console.log('Checking for OAuth token in R2...');
+			const oauthObj = await s3.send(new GetObjectCommand({
+				Bucket: R2_BUCKET_NAME,
+				Key: 'system/_oauth_token.json',
+			}));
+			const oauthChunks = [];
+			for await (const chunk of oauthObj.Body) {
+				oauthChunks.push(chunk);
+			}
+			const oauthBody = Buffer.concat(oauthChunks).toString('utf8');
+			// yt-dlp stores OAuth tokens in its cache dir under youtube-nsig/
+			// We recreate the cache structure in /tmp
+			oauthCacheDir = '/tmp/yt-dlp-cache';
+			const oauthTokenDir = path.join(oauthCacheDir, 'youtube-nsig');
+			fs.mkdirSync(oauthTokenDir, { recursive: true });
+			const oauthTokenPath = path.join(oauthCacheDir, 'youtube-oauth2-token.json');
+			fs.writeFileSync(oauthTokenPath, oauthBody);
+			hasOAuth = true;
+			console.log('OAuth token loaded from R2');
+		} catch (err) {
+			if (err.name === 'NoSuchKey' || err.name === 'NotFound') {
+				console.log('No OAuth token found in R2 (optional)');
+			} else {
+				console.warn('Error loading OAuth token:', err.message);
+			}
+		}
+
+		// Realistic User-Agent to avoid fingerprinting as a bot
+		const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+		// Player client strategies to try in order (each has different bot detection thresholds)
+		const PLAYER_CLIENTS = ['tv_embedded', 'web_creator', 'mweb', 'android', 'ios', 'web'];
+
+		// Helper function to run yt-dlp with a specific strategy
+		const runYtDlp = async (useCookies, playerClient, useOAuth) => {
 			const args = [
 				`https://www.youtube.com/watch?v=${videoId}`,
 				'-f', '140/bestaudio[ext=m4a]/bestaudio',
@@ -174,15 +211,29 @@ exports.handler = async (event, context) => {
 				'--js-runtimes', `node:${process.execPath}`
 			];
 
-			if (useCookies && hasCookies && activeCookiePath) {
-				args.push('--cookies', activeCookiePath);
+			// Authentication: OAuth takes priority over cookies
+			if (useOAuth && hasOAuth && oauthCacheDir) {
+				args.push('--username', 'oauth2', '--password', '');
+				args.push('--cache-dir', oauthCacheDir);
+			} else {
+				args.push('--no-cache-dir');
+				if (useCookies && hasCookies && activeCookiePath) {
+					args.push('--cookies', activeCookiePath);
+				}
 			}
 
-			// Client Impersonation to bypass "Sign in to confirm you're not a bot"
-			// Strategy: TV Embedded (often permissive) + Standard Network (IPv6 might be cleaner than IPv4)
-			args.push('--extractor-args', 'youtube:player_client=tv_embedded');
-			args.push('--no-cache-dir');
+			// Player client impersonation
+			args.push('--extractor-args', `youtube:player_client=${playerClient}`);
 
+			// Note: --sleep-interval removed to avoid Netlify function timeout
+
+			// Realistic User-Agent
+			args.push('--user-agent', CHROME_UA);
+
+			// Compatibility options
+			args.push('--compat-options', '2025');
+
+			// Proxy support
 			if (process.env.PROXY_URL && !process.env.PROXY_URL.includes('user:pass@host:port')) {
 				console.log('Using Proxy:', process.env.PROXY_URL);
 				args.push('--proxy', process.env.PROXY_URL);
@@ -190,7 +241,8 @@ exports.handler = async (event, context) => {
 				console.warn('Ignoring invalid/placeholder PROXY_URL:', process.env.PROXY_URL);
 			}
 
-			console.log(`Spawning (useCookies=${useCookies}): ${binaryPath} ${args.join(' ')}`);
+			const strategyLabel = `client=${playerClient}, cookies=${useCookies}, oauth=${useOAuth}`;
+			console.log(`Spawning (${strategyLabel}): ${binaryPath} ${args.join(' ')}`);
 
 			const child = spawn(binaryPath, args, {
 				stdio: ['ignore', 'pipe', 'pipe']
@@ -211,36 +263,55 @@ exports.handler = async (event, context) => {
 			});
 		};
 
-		// Execute with retry logic
+		// --- Multi-Strategy Download Cascade ---
 		let downloadSuccess = false;
 		let downloadError = null;
+		let attemptCount = 0;
 
-		// 1. Try with cookies if available
-		if (hasCookies) {
-			try {
-				console.log(`Attempting download WITH cookies for ${videoId}...`);
-				await runYtDlp(true);
-				downloadSuccess = true;
-			} catch (err) {
-				console.warn(`Download with cookies failed: ${err.message}`);
-				console.log("Retrying WITHOUT cookies...");
+		// Build strategy list: try each player_client, with auth modes
+		const strategies = [];
+
+		// Phase 1: Try OAuth (if available) with top clients
+		if (hasOAuth) {
+			for (const client of PLAYER_CLIENTS.slice(0, 3)) {
+				strategies.push({ useCookies: false, playerClient: client, useOAuth: true });
 			}
 		}
 
-		// 2. Try without cookies if (not attempted yet) OR (attempted and failed)
-		if (!downloadSuccess) {
+		// Phase 2: Try cookies (if available) with all clients
+		if (hasCookies) {
+			for (const client of PLAYER_CLIENTS) {
+				strategies.push({ useCookies: true, playerClient: client, useOAuth: false });
+			}
+		}
+
+		// Phase 3: Try without any auth with all clients
+		for (const client of PLAYER_CLIENTS) {
+			strategies.push({ useCookies: false, playerClient: client, useOAuth: false });
+		}
+
+		// Cap strategies to avoid Netlify function timeout (26s limit)
+		const MAX_ATTEMPTS = 6;
+		const cappedStrategies = strategies.slice(0, MAX_ATTEMPTS);
+		console.log(`Will try up to ${cappedStrategies.length} strategies (of ${strategies.length} total) for ${videoId}`);
+
+		for (const strategy of cappedStrategies) {
+			if (downloadSuccess) break;
+			attemptCount++;
+			const label = `[${attemptCount}/${cappedStrategies.length}] client=${strategy.playerClient}, cookies=${strategy.useCookies}, oauth=${strategy.useOAuth}`;
 			try {
-				console.log(`Attempting download WITHOUT cookies for ${videoId}...`);
-				await runYtDlp(false);
+				console.log(`Strategy ${label}: attempting...`);
+				await runYtDlp(strategy.useCookies, strategy.playerClient, strategy.useOAuth);
 				downloadSuccess = true;
+				console.log(`Strategy ${label}: SUCCESS`);
 			} catch (err) {
-				console.error(`Download without cookies failed: ${err.message}`);
+				console.warn(`Strategy ${label}: FAILED - ${err.message}`);
 				downloadError = err;
 			}
 		}
 
 		if (!downloadSuccess) {
-			throw downloadError || new Error("Download failed");
+			throw downloadError || new Error("All download strategies exhausted");
 		}
 
 		// Verify file exists

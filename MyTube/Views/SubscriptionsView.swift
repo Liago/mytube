@@ -34,7 +34,7 @@ struct SubscriptionsView: View {
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(viewModel.subscriptions) { subscription in
+                            ForEach(sortedSubscriptions) { subscription in
                                 NavigationLink(destination: ChannelDetailView(subscription: subscription)) {
                                     HStack(spacing: 16) {
                                         AsyncImage(url: URL(string: subscription.snippet.thumbnails.defaultThumbnail?.url ?? "")) { image in
@@ -106,6 +106,18 @@ struct SubscriptionsView: View {
             }
         }
     }
+    
+    private var sortedSubscriptions: [Subscription] {
+        viewModel.subscriptions.sorted { sub1, sub2 in
+            let isHome1 = videoStatusManager.isHomeSubscription(channelId: sub1.snippet.resourceId.channelId ?? "")
+            let isHome2 = videoStatusManager.isHomeSubscription(channelId: sub2.snippet.resourceId.channelId ?? "")
+            
+            if isHome1 != isHome2 {
+                return isHome1 // True comes first
+            }
+            return sub1.snippet.title < sub2.snippet.title
+        }
+    }
 }
 
 @MainActor
@@ -118,7 +130,18 @@ class SubscriptionsViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         do {
-            self.subscriptions = try await YouTubeService.shared.fetchSubscriptions()
+            let fetchedSubscriptions = try await YouTubeService.shared.fetchSubscriptions()
+            
+            // Sort: Home subscriptions first, then alphabetical
+            self.subscriptions = fetchedSubscriptions.sorted { sub1, sub2 in
+                let isHome1 = VideoStatusManager.shared.isHomeSubscription(channelId: sub1.snippet.resourceId.channelId ?? "")
+                let isHome2 = VideoStatusManager.shared.isHomeSubscription(channelId: sub2.snippet.resourceId.channelId ?? "")
+                
+                if isHome1 != isHome2 {
+                    return isHome1 // True comes first
+                }
+                return sub1.snippet.title < sub2.snippet.title
+            }
         } catch {
             self.errorMessage = error.localizedDescription
         }

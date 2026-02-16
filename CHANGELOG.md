@@ -1,3 +1,9 @@
+## [1.9.0](https://github.com/Liago/mytube/compare/v1.8.0...v1.9.0) (2026-02-16)
+
+### Features
+
+* enhances video download and playback resilience ([84a5a5b](https://github.com/Liago/mytube/commit/84a5a5b9cdafd5a66ca91f07e75bd1ce7a51c681))
+
 ## [1.8.0](https://github.com/Liago/mytube/compare/v1.7.5...v1.8.0) (2026-02-06)
 
 ### Features

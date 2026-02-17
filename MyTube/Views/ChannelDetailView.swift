@@ -2,11 +2,25 @@ import SwiftUI
 import Combine
 
 struct ChannelDetailView: View {
-    let subscription: Subscription
+    let channelId: String
+    let channelTitle: String
+    
     @StateObject private var viewModel = ChannelDetailViewModel()
     @ObservedObject private var videoStatusManager = VideoStatusManager.shared
     @ObservedObject private var cacheService = CacheStatusService.shared
     @State private var itemToShare: PlaylistItem?
+    
+    // Convenience init for passing Subscription
+    init(subscription: Subscription) {
+        self.channelId = subscription.snippet.resourceId.channelId ?? ""
+        self.channelTitle = subscription.snippet.title
+    }
+    
+    // Default init for passing explicit values
+    init(channelId: String, channelTitle: String) {
+        self.channelId = channelId
+        self.channelTitle = channelTitle
+    }
     
     var body: some View {
         Group {
@@ -16,8 +30,8 @@ struct ChannelDetailView: View {
             } else if let error = viewModel.errorMessage {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundColor(.orange)
+                    .font(.largeTitle)
+                    .foregroundColor(.orange)
                     Text("Oops! Something went wrong.")
                         .font(.headline)
                     Text(error)
@@ -27,7 +41,7 @@ struct ChannelDetailView: View {
                         .padding(.horizontal)
                     
                     Button("Retry") {
-                        Task { await viewModel.loadData(channelId: subscription.snippet.resourceId.channelId ?? "") }
+                        Task { await viewModel.loadData(channelId: channelId) }
                     }
                     .buttonStyle(.bordered)
                 }
@@ -157,7 +171,7 @@ struct ChannelDetailView: View {
                             .onAppear {
                                 if video.id == viewModel.videos.last?.id {
                                     Task {
-                                        await viewModel.loadMore(channelId: subscription.snippet.resourceId.channelId ?? "")
+                                        await viewModel.loadMore(channelId: channelId)
                                     }
                                 }
                             }
@@ -206,7 +220,7 @@ struct ChannelDetailView: View {
                 }
                 .listStyle(.plain)
                 .refreshable {
-                     await viewModel.loadData(channelId: subscription.snippet.resourceId.channelId ?? "")
+                     await viewModel.loadData(channelId: channelId)
                 }
                 .sheet(item: $itemToShare) { video in
                     let url = URL(string: "https://www.youtube.com/watch?v=\(video.videoId)")!
@@ -214,13 +228,13 @@ struct ChannelDetailView: View {
                 }
             }
         }
-        .navigationTitle(subscription.snippet.title)
+        .navigationTitle(channelTitle)
         .navigationBarTitleDisplayMode(.large)
         .task {
             // Only load if not already loaded or if different channel?
             // For simplicity, load every time view appears or use state to track loaded channel
             if viewModel.videos.isEmpty {
-                 await viewModel.loadData(channelId: subscription.snippet.resourceId.channelId ?? "")
+                 await viewModel.loadData(channelId: channelId)
             }
         }
     }

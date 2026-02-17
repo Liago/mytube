@@ -4,10 +4,12 @@ struct VideoCardView: View {
     let videoId: String
     let title: String
     let channelName: String
+    let channelId: String // Added
     let date: Date?
     let duration: String?
     let thumbnailURL: URL?
     let action: () -> Void
+    let onChannelTap: (String) -> Void // Added
     
     @ObservedObject private var cacheService = CacheStatusService.shared
     
@@ -90,14 +92,20 @@ struct VideoCardView: View {
                     // we can skip or show a generic "Watch now" call to action styled nicely.
                     
                     HStack {
-                        Text(channelName)
-                            .font(.headline)
-                            .fontWeight(.bold)
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 24)
-                            .background(Color.primary)
-                            .foregroundColor(Color(UIColor.systemBackground))
-                            .cornerRadius(30)
+                        // Channel Label Button - navigates to channel
+                        Button(action: {
+                            onChannelTap(channelId)
+                        }) {
+                            Text(channelName)
+                                .font(.headline)
+                                .fontWeight(.bold)
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 24)
+                                .background(Color.primary)
+                                .foregroundColor(Color(UIColor.systemBackground))
+                                .cornerRadius(30)
+                        }
+                        .buttonStyle(PlainButtonStyle()) // Important to nest inside another button
                         
                         Spacer()
                         
@@ -130,10 +138,12 @@ struct VideoCardView_Previews: PreviewProvider {
                 videoId: "test_id",
                 title: "Petra, Jordan - A Journey Through History",
                 channelName: "Travel & History",
+                channelId: "UC_test",
                 date: Date(),
                 duration: "10:05",
                 thumbnailURL: URL(string: "https://example.com/image.jpg"),
-                action: {}
+                action: {},
+                onChannelTap: { _ in }
             )
             .padding()
         }

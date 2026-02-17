@@ -5,7 +5,8 @@
   "main": "netlify/functions/audio.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "upload-cookies": "node upload-cookies.js"
+    "upload-cookies": "node upload-cookies.js",
+	"netlify-deploy": "npx netlify deploy --prod"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.500.0",

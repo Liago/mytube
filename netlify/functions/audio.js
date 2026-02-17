@@ -230,19 +230,22 @@ exports.handler = async (event, context) => {
 		let downloadError = null;
 		let attemptCount = 0;
 
-		// Build strategy list: try each player_client with cookies first, then without
+		// Build strategy list: prioritize no-cookie strategies with proxy
 		const strategies = [];
 
-		// Phase 1: Try cookies (if available) with all clients
 		if (hasCookies) {
+			// Mixed strategy: try most permissive clients without cookies first, then with
+			strategies.push({ useCookies: false, playerClient: 'tv_embedded' });
+			strategies.push({ useCookies: true, playerClient: 'tv_embedded' });
+			strategies.push({ useCookies: false, playerClient: 'ios' });
+			strategies.push({ useCookies: true, playerClient: 'web_creator' }); // web_creator often needs cookies
+			strategies.push({ useCookies: false, playerClient: 'android' });
+			strategies.push({ useCookies: true, playerClient: 'mweb' });
+		} else {
+			// No cookies available, just try clients in order
 			for (const client of PLAYER_CLIENTS) {
-				strategies.push({ useCookies: true, playerClient: client });
+				strategies.push({ useCookies: false, playerClient: client });
 			}
-		}
-
-		// Phase 2: Try without cookies with all clients
-		for (const client of PLAYER_CLIENTS) {
-			strategies.push({ useCookies: false, playerClient: client });
 		}
 
 		// Cap strategies to avoid Netlify function timeout (26s limit)

@@ -1,3 +1,9 @@
+## [1.10.0](https://github.com/Liago/mytube/compare/v1.9.1...v1.10.0) (2026-02-17)
+
+### Features
+
+* implement channel navigation from home feed cards ([8e58dcc](https://github.com/Liago/mytube/commit/8e58dcc6db4dded3144a31b614fa2a20baeac09d))
+
 ## [1.9.1](https://github.com/Liago/mytube/compare/v1.9.0...v1.9.1) (2026-02-17)
 
 ### Bug Fixes

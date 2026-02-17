@@ -166,7 +166,7 @@ exports.handler = async (event, context) => {
 		const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 		// Player client strategies to try in order (each has different bot detection thresholds)
-		const PLAYER_CLIENTS = ['tv_embedded', 'web_creator', 'mweb', 'android', 'ios', 'web'];
+		const PLAYER_CLIENTS = ['tv_embedded', 'web_creator', 'mweb', 'android', 'ios', 'web', 'android_creator'];
 
 		// Helper function to run yt-dlp with a specific strategy
 		const runYtDlp = async (useCookies, playerClient) => {
@@ -235,10 +235,11 @@ exports.handler = async (event, context) => {
 
 		if (hasCookies) {
 			// Mixed strategy: try most permissive clients without cookies first, then with
+			strategies.push({ useCookies: true, playerClient: 'ios' }); // iOS with cookies is often very stable
+			strategies.push({ useCookies: true, playerClient: 'android_creator' });
+			strategies.push({ useCookies: true, playerClient: 'web' }); // Fallback web with cookies
 			strategies.push({ useCookies: false, playerClient: 'tv_embedded' });
 			strategies.push({ useCookies: true, playerClient: 'tv_embedded' });
-			strategies.push({ useCookies: false, playerClient: 'ios' });
-			strategies.push({ useCookies: true, playerClient: 'web_creator' }); // web_creator often needs cookies
 			strategies.push({ useCookies: false, playerClient: 'android' });
 			strategies.push({ useCookies: true, playerClient: 'mweb' });
 		} else {

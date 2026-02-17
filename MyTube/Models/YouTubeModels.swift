@@ -10,6 +10,7 @@ struct Snippet: Codable {
     let description: String
     let thumbnails: Thumbnails?
     let resourceId: ResourceId?
+    let channelId: String?
     let channelTitle: String?
     let publishedAt: String?
 }

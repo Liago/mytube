@@ -48,60 +48,7 @@ struct HomeView: View {
                         }
                     }
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(viewModel.videos) { item in
-                                VideoCardView(
-                                    videoId: item.id,
-                                    title: item.snippet.title,
-                                    channelName: item.snippet.channelTitle ?? "",
-                                    channelId: item.snippet.channelId ?? "",
-                                    date: item.snippet.publishedAt.flatMap { DateUtils.parseISOString($0) } ?? (item.snippet.publishedAt != nil ? Date() : nil),
-                                    duration: DateUtils.formatDuration(item.contentDetails.duration),
-                                    thumbnailURL: URL(string: item.snippet.thumbnails?.high?.url ?? item.snippet.thumbnails?.medium?.url ?? ""),
-                                    action: {
-                                        AudioPlayerService.shared.playVideo(
-                                            videoId: item.id,
-                                            title: item.snippet.title,
-                                            author: item.snippet.channelTitle ?? "",
-                                            thumbnailURL: URL(string: item.snippet.thumbnails?.high?.url ?? ""),
-                                            publishedAt: item.snippet.publishedAt
-                                        )
-                                    },
-                                    onChannelTap: { channelId in
-                                        if let channelName = item.snippet.channelTitle {
-                                            selectedChannel = (channelId, channelName)
-                                        }
-                                    }
-                                )
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                            }
-                        }
-                        .padding(.vertical, 16)
-                        
-                        // Hidden Navigation Link
-                        NavigationLink(
-                            isActive: Binding(
-                                get: { selectedChannel != nil },
-                                set: { if !$0 { selectedChannel = nil } }
-                            ),
-                            destination: {
-                                if let channel = selectedChannel {
-                                    ChannelDetailView(channelId: channel.id, channelTitle: channel.title)
-                                } else {
-                                    EmptyView()
-                                }
-                            }
-                        ) {
-                            EmptyView()
-                        }
-                        }
-                        .padding(.vertical, 16)
-                    }
-                    .refreshable {
-                        await viewModel.loadHomeVideos()
-                    }
+                    videosList
                 }
             }
             .navigationTitle("Home")
@@ -110,5 +57,66 @@ struct HomeView: View {
         .task {
             await viewModel.loadHomeVideos()
         }
+    }
+    
+    @ViewBuilder
+    private var videosList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(viewModel.videos) { item in
+                    videoCard(for: item)
+                }
+            }
+            .padding(.vertical, 16)
+            
+            // Hidden Navigation Link
+            NavigationLink(
+                isActive: Binding(
+                    get: { selectedChannel != nil },
+                    set: { if !$0 { selectedChannel = nil } }
+                ),
+                destination: {
+                    if let channel = selectedChannel {
+                        ChannelDetailView(channelId: channel.id, channelTitle: channel.title)
+                    } else {
+                        EmptyView()
+                    }
+                }
+            ) {
+                EmptyView()
+            }
+        .refreshable {
+            await viewModel.loadHomeVideos()
+        }
+    }
+    }
+    
+    @ViewBuilder
+    private func videoCard(for item: Video) -> some View {
+        VideoCardView(
+            videoId: item.id,
+            title: item.snippet.title,
+            channelName: item.snippet.channelTitle ?? "",
+            channelId: item.snippet.channelId ?? "",
+            date: item.snippet.publishedAt.flatMap { DateUtils.parseISOString($0) } ?? (item.snippet.publishedAt != nil ? Date() : nil),
+            duration: DateUtils.formatDuration(item.contentDetails.duration),
+            thumbnailURL: URL(string: item.snippet.thumbnails?.high?.url ?? item.snippet.thumbnails?.medium?.url ?? ""),
+            action: {
+                AudioPlayerService.shared.playVideo(
+                    videoId: item.id,
+                    title: item.snippet.title,
+                    author: item.snippet.channelTitle ?? "",
+                    thumbnailURL: URL(string: item.snippet.thumbnails?.high?.url ?? ""),
+                    publishedAt: item.snippet.publishedAt
+                )
+            },
+            onChannelTap: { channelId in
+                if let channelName = item.snippet.channelTitle {
+                    selectedChannel = (channelId, channelName)
+                }
+            }
+        )
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 }

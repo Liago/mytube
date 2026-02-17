@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
+    @State private var selectedChannel: (id: String, title: String)?
     
     var body: some View {
         NavigationView {
@@ -54,6 +55,7 @@ struct HomeView: View {
                                     videoId: item.id,
                                     title: item.snippet.title,
                                     channelName: item.snippet.channelTitle ?? "",
+                                    channelId: item.snippet.channelId ?? "",
                                     date: item.snippet.publishedAt.flatMap { DateUtils.parseISOString($0) } ?? (item.snippet.publishedAt != nil ? Date() : nil),
                                     duration: DateUtils.formatDuration(item.contentDetails.duration),
                                     thumbnailURL: URL(string: item.snippet.thumbnails?.high?.url ?? item.snippet.thumbnails?.medium?.url ?? ""),
@@ -65,11 +67,35 @@ struct HomeView: View {
                                             thumbnailURL: URL(string: item.snippet.thumbnails?.high?.url ?? ""),
                                             publishedAt: item.snippet.publishedAt
                                         )
+                                    },
+                                    onChannelTap: { channelId in
+                                        if let channelName = item.snippet.channelTitle {
+                                            selectedChannel = (channelId, channelName)
+                                        }
                                     }
                                 )
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
                             }
+                        }
+                        .padding(.vertical, 16)
+                        
+                        // Hidden Navigation Link
+                        NavigationLink(
+                            isActive: Binding(
+                                get: { selectedChannel != nil },
+                                set: { if !$0 { selectedChannel = nil } }
+                            ),
+                            destination: {
+                                if let channel = selectedChannel {
+                                    ChannelDetailView(channelId: channel.id, channelTitle: channel.title)
+                                } else {
+                                    EmptyView()
+                                }
+                            }
+                        ) {
+                            EmptyView()
+                        }
                         }
                         .padding(.vertical, 16)
                     }

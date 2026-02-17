@@ -1,3 +1,9 @@
+## [1.9.1](https://github.com/Liago/mytube/compare/v1.9.0...v1.9.1) (2026-02-17)
+
+### Bug Fixes
+
+* prioritizes no-cookie audio download strategies ([85197cf](https://github.com/Liago/mytube/commit/85197cff8219e8d9b6facad0613b5e613440d02a))
+
 ## [1.9.0](https://github.com/Liago/mytube/compare/v1.8.0...v1.9.0) (2026-02-16)
 
 ### Features

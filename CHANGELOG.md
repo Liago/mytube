@@ -1,3 +1,9 @@
+## [1.11.1](https://github.com/Liago/mytube/compare/v1.11.0...v1.11.1) (2026-02-17)
+
+### Bug Fixes
+
+* **ios:** resolve HomeView compilation errors and add channelId to Snippet ([ee79491](https://github.com/Liago/mytube/commit/ee794911fdf33c878cc72f398519b3d290bb4220))
+
 ## [1.11.0](https://github.com/Liago/mytube/compare/v1.10.0...v1.11.0) (2026-02-17)
 
 ### Features

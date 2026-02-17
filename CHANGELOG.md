@@ -1,3 +1,9 @@
+## [1.11.0](https://github.com/Liago/mytube/compare/v1.10.0...v1.11.0) (2026-02-17)
+
+### Features
+
+* enhances audio extraction strategy ([8820d32](https://github.com/Liago/mytube/commit/8820d32292dac1ebee36b809fb65124ce27c0be5))
+
 ## [1.10.0](https://github.com/Liago/mytube/compare/v1.9.1...v1.10.0) (2026-02-17)
 
 ### Features

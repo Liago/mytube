@@ -62,7 +62,18 @@ struct SubscriptionsView: View {
                                         
                                         Spacer()
                                         
-                                        // Home Toggle
+                                        // Prefetch Toggle
+                                        Button(action: {
+                                            videoStatusManager.togglePrefetchSubscription(channelId: subscription.snippet.resourceId.channelId ?? "")
+                                        }) {
+                                            let isPrefetch = videoStatusManager.isPrefetchSubscription(channelId: subscription.snippet.resourceId.channelId ?? "")
+                                            Image(systemName: isPrefetch ? "cloud.bolt.fill" : "cloud.bolt")
+                                                .font(.body)
+                                                .foregroundColor(isPrefetch ? .blue : .gray)
+                                                .padding(8)
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
+                                        
                                         // Home Toggle
                                         Button(action: {
                                             videoStatusManager.toggleHomeSubscription(channelId: subscription.snippet.resourceId.channelId ?? "")
@@ -109,12 +120,23 @@ struct SubscriptionsView: View {
     
     private var sortedSubscriptions: [Subscription] {
         viewModel.subscriptions.sorted { sub1, sub2 in
-            let isHome1 = videoStatusManager.isHomeSubscription(channelId: sub1.snippet.resourceId.channelId ?? "")
-            let isHome2 = videoStatusManager.isHomeSubscription(channelId: sub2.snippet.resourceId.channelId ?? "")
+            let id1 = sub1.snippet.resourceId.channelId ?? ""
+            let id2 = sub2.snippet.resourceId.channelId ?? ""
+            
+            let isHome1 = videoStatusManager.isHomeSubscription(channelId: id1)
+            let isHome2 = videoStatusManager.isHomeSubscription(channelId: id2)
             
             if isHome1 != isHome2 {
                 return isHome1 // True comes first
             }
+            
+            let isPrefetch1 = videoStatusManager.isPrefetchSubscription(channelId: id1)
+            let isPrefetch2 = videoStatusManager.isPrefetchSubscription(channelId: id2)
+            
+            if isPrefetch1 != isPrefetch2 {
+                return isPrefetch1 // True comes first
+            }
+            
             return sub1.snippet.title < sub2.snippet.title
         }
     }
@@ -132,14 +154,25 @@ class SubscriptionsViewModel: ObservableObject {
         do {
             let fetchedSubscriptions = try await YouTubeService.shared.fetchSubscriptions()
             
-            // Sort: Home subscriptions first, then alphabetical
+            // Sort: Home subscriptions first, then prefetch, then alphabetical
             self.subscriptions = fetchedSubscriptions.sorted { sub1, sub2 in
-                let isHome1 = VideoStatusManager.shared.isHomeSubscription(channelId: sub1.snippet.resourceId.channelId ?? "")
-                let isHome2 = VideoStatusManager.shared.isHomeSubscription(channelId: sub2.snippet.resourceId.channelId ?? "")
+                let id1 = sub1.snippet.resourceId.channelId ?? ""
+                let id2 = sub2.snippet.resourceId.channelId ?? ""
+                
+                let isHome1 = VideoStatusManager.shared.isHomeSubscription(channelId: id1)
+                let isHome2 = VideoStatusManager.shared.isHomeSubscription(channelId: id2)
                 
                 if isHome1 != isHome2 {
                     return isHome1 // True comes first
                 }
+                
+                let isPrefetch1 = VideoStatusManager.shared.isPrefetchSubscription(channelId: id1)
+                let isPrefetch2 = VideoStatusManager.shared.isPrefetchSubscription(channelId: id2)
+                
+                if isPrefetch1 != isPrefetch2 {
+                    return isPrefetch1 // True comes first
+                }
+                
                 return sub1.snippet.title < sub2.snippet.title
             }
         } catch {

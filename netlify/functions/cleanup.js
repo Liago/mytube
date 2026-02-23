@@ -16,7 +16,7 @@ const s3 = new S3Client({
 });
 
 const handler = async (event, context) => {
-	console.log("Starting weekly cleanup...");
+	console.log("Starting daily cleanup...");
 
 	try {
 		// List all objects
@@ -76,5 +76,5 @@ const handler = async (event, context) => {
 	}
 };
 
-// Schedule: Weekly on Sunday at midnight
-exports.handler = schedule("@weekly", handler);
+// Schedule: Daily at midnight
+exports.handler = schedule("@daily", handler);

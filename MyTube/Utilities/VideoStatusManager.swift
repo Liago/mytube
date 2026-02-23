@@ -42,6 +42,11 @@ class VideoStatusManager: ObservableObject {
             homeSubscriptions = decoded
         }
         
+        if let data = UserDefaults.standard.data(forKey: prefetchSubscriptionsKey),
+           let decoded = try? JSONDecoder().decode(Set<String>.self, from: data) {
+            prefetchSubscriptions = decoded
+        }
+        
         // Initial Sync
         syncHistory()
     }
@@ -224,6 +229,31 @@ class VideoStatusManager: ObservableObject {
         syncPreferences()
     }
     
+    // MARK: - Prefetch Subscriptions API
+    
+    @Published var prefetchSubscriptions: Set<String> = []
+    private let prefetchSubscriptionsKey = "MyTube_PrefetchSubscriptions"
+    
+    func togglePrefetchSubscription(channelId: String) {
+        if prefetchSubscriptions.contains(channelId) {
+            prefetchSubscriptions.remove(channelId)
+        } else {
+            prefetchSubscriptions.insert(channelId)
+        }
+        savePrefetchSubscriptions()
+    }
+    
+    func isPrefetchSubscription(channelId: String) -> Bool {
+        return prefetchSubscriptions.contains(channelId)
+    }
+    
+    private func savePrefetchSubscriptions() {
+        if let encoded = try? JSONEncoder().encode(prefetchSubscriptions) {
+            UserDefaults.standard.set(encoded, forKey: prefetchSubscriptionsKey)
+        }
+        syncPreferences()
+    }
+    
     // MARK: - Preferences Sync
     
     func syncPreferences() {
@@ -241,7 +271,10 @@ class VideoStatusManager: ObservableObject {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.setValue(Secrets.apiSecret, forHTTPHeaderField: "x-api-key")
                 
-                let payload = ["channels": Array(homeSubscriptions)]
+                let payload: [String: [String]] = [
+                    "channels": Array(homeSubscriptions),
+                    "prefetchChannels": Array(prefetchSubscriptions)
+                ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: payload)
                 
                 let (_, response) = try await URLSession.shared.data(for: request)

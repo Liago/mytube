@@ -22,75 +22,117 @@ const s3 = new S3Client({
 	},
 });
 
-// Helper: Run yt-dlp (Copied/Adapted from audio.js)
 const runYtDlp = async (url, outputPath, cookiesPath) => {
-	return new Promise((resolve, reject) => {
-		// Locate yt-dlp binary (assuming it's in the same bin folder as audio.js expects or relative)
-		// In Netlify, we extracted it to /tmp/yt-dlp usually, but here we might need to re-download or use what's available.
-		// For simplicity, we assume we need to download it again if it's a fresh container.
-		// CAUTION: Background functions might run on different instances.
-		// We will try to use the one from the repo if committed, or download.
-		// As a fallback, let's assume valid yt-dlp is present or downloadable.
+	const binaryName = 'yt-dlp-linux';
+	const binPath = path.join('/tmp', binaryName);
 
-		// For this implementation, we will try to use a relative path or standard linux path.
-		// If we really need robustness, we should copy the "ensure binary" logic from audio.js 
-		// But to keep this file clean, let's assume /var/task/bin/yt-dlp-linux exists or similar.
-		// Actually, best to replicate the "download if missing" logic briefly.
+	if (!fs.existsSync(binPath)) {
+		try {
+			require('child_process').execSync(`curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ${binPath} && chmod +x ${binPath}`);
+		} catch (e) {
+			throw new Error(`Failed to download yt-dlp: ${e.message}`);
+		}
+	}
 
-		const binaryName = 'yt-dlp-linux';
-		const binPath = path.join('/tmp', binaryName);
+	const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+	const PLAYER_CLIENTS = ['tv_embedded', 'web_creator', 'mweb', 'android', 'ios', 'web', 'android_creator'];
 
-		// Check if binary exists, if not download (simplified version of audio.js logic)
-		if (!fs.existsSync(binPath)) {
-			// We can't easily download here without curl/fetch logic again. 
-			// Ideally we should share code. For now, let's assume we can spawn 'curl'
-			try {
-				require('child_process').execSync(`curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ${binPath} && chmod +x ${binPath}`);
-			} catch (e) {
-				return reject(new Error(`Failed to download yt-dlp: ${e.message}`));
+	const executeStrategy = async (useCookies, playerClient) => {
+		return new Promise((resolve, reject) => {
+			const args = [
+				'--extract-audio',
+				'--audio-format', 'm4a',
+				'--output', outputPath,
+				'--no-playlist',
+				'--no-warnings',
+				'--js-runtimes', `node:${process.execPath}`,
+				url
+			];
+
+			if (useCookies && cookiesPath && fs.existsSync(cookiesPath)) {
+				args.push('--cookies', cookiesPath);
 			}
-		}
 
-		const args = [
-			'--extract-audio',
-			'--audio-format', 'm4a',
-			'--output', outputPath,
-			'--no-playlist',
-			'--no-warnings',
-			'--js-runtimes', `node:${process.execPath}`,
-			url
-		];
+			args.push('--extractor-args', `youtube:player_client=${playerClient}`);
+			args.push('--user-agent', CHROME_UA);
+			args.push('--compat-options', '2025');
 
-		if (cookiesPath && fs.existsSync(cookiesPath)) {
-			args.push('--cookies', cookiesPath);
-		}
+			if (process.env.PROXY_URL && !process.env.PROXY_URL.includes('user:pass@host:port')) {
+				args.push('--proxy', process.env.PROXY_URL);
+			}
 
-		const processProc = spawn(binPath, args);
+			const processProc = spawn(binPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
-		processProc.on('close', (code) => {
-			if (code === 0) resolve();
-			else reject(new Error(`yt-dlp exited with code ${code}`));
+			let stderrOutput = '';
+			processProc.stderr.on('data', (data) => {
+				stderrOutput += data.toString();
+			});
+
+			processProc.on('close', (code) => {
+				if (code === 0) resolve();
+				else reject(new Error(`yt-dlp exited with code ${code}. Stderr: ${stderrOutput}`));
+			});
 		});
-	});
+	};
+
+	let downloadSuccess = false;
+	let downloadError = null;
+	const hasCookies = cookiesPath && fs.existsSync(cookiesPath);
+
+	const strategies = [];
+	if (hasCookies) {
+		strategies.push({ useCookies: true, playerClient: 'ios' });
+		strategies.push({ useCookies: true, playerClient: 'android_creator' });
+		strategies.push({ useCookies: true, playerClient: 'web' });
+		strategies.push({ useCookies: false, playerClient: 'tv_embedded' });
+		strategies.push({ useCookies: true, playerClient: 'tv_embedded' });
+		strategies.push({ useCookies: false, playerClient: 'android' });
+		strategies.push({ useCookies: true, playerClient: 'mweb' });
+	} else {
+		for (const client of PLAYER_CLIENTS) {
+			strategies.push({ useCookies: false, playerClient: client });
+		}
+	}
+
+	const MAX_ATTEMPTS = 6;
+	const cappedStrategies = strategies.slice(0, MAX_ATTEMPTS);
+
+	for (const strategy of cappedStrategies) {
+		if (downloadSuccess) break;
+		try {
+			console.log(`Trying strategy client=${strategy.playerClient}, cookies=${strategy.useCookies}`);
+			await executeStrategy(strategy.useCookies, strategy.playerClient);
+			downloadSuccess = true;
+			console.log(`Success with strategy client=${strategy.playerClient}`);
+		} catch (err) {
+			console.warn(`Strategy failed: ${err.message}`);
+			downloadError = err;
+		}
+	}
+
+	if (!downloadSuccess) {
+		throw downloadError || new Error("All download strategies exhausted");
+	}
 };
 
 const prefetchHandler = async (event) => {
 	console.log("Starting Scheduled Prefetch...");
 
 	try {
-		// 1. Get Home Channels
 		let channels = [];
 		try {
 			const data = await s3.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: PREFS_FILE_KEY }));
 			const body = await data.Body.transformToString();
-			channels = JSON.parse(body).channels || [];
+			const prefs = JSON.parse(body);
+			// Use prefetchChannels if present, fallback to channels for retrocompatibility
+			channels = prefs.prefetchChannels || prefs.channels || [];
 		} catch (e) {
 			console.log("No preferences found or error reading prefs:", e.message);
 			return;
 		}
 
 		if (channels.length === 0) {
-			console.log("No home channels to scan.");
+			console.log("No prefetch channels to scan.");
 			return;
 		}
 

@@ -1,3 +1,9 @@
+## [1.12.0](https://github.com/Liago/mytube/compare/v1.11.2...v1.12.0) (2026-02-23)
+
+### Features
+
+* updated prefetch logic and iOS prefetch toggle ([a9c2e20](https://github.com/Liago/mytube/commit/a9c2e202d72701d791af7abdb7e2676a8e2ca91a))
+
 ## [1.11.2](https://github.com/Liago/mytube/compare/v1.11.1...v1.11.2) (2026-02-23)
 
 ### Bug Fixes

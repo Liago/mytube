@@ -1,3 +1,9 @@
+## [1.11.2](https://github.com/Liago/mytube/compare/v1.11.1...v1.11.2) (2026-02-23)
+
+### Bug Fixes
+
+* changes cleanup schedule to daily ([f6eda3b](https://github.com/Liago/mytube/commit/f6eda3b986007b7c01268f8c5fc0c2651a4f05c6))
+
 ## [1.11.1](https://github.com/Liago/mytube/compare/v1.11.0...v1.11.1) (2026-02-17)
 
 ### Bug Fixes

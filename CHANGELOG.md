@@ -1,3 +1,9 @@
+## [1.12.1](https://github.com/Liago/mytube/compare/v1.12.0...v1.12.1) (2026-02-24)
+
+### Bug Fixes
+
+* updates cleanup schedule to cron syntax ([1eaccee](https://github.com/Liago/mytube/commit/1eaccee61342d6be0111461b10ac400506835f8f))
+
 ## [1.12.0](https://github.com/Liago/mytube/compare/v1.11.2...v1.12.0) (2026-02-23)
 
 ### Features

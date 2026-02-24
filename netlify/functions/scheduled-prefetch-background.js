@@ -37,9 +37,9 @@ const runYtDlp = async (url, outputPath, cookiesPath) => {
 	const executeStrategy = async (useCookies, playerClient) => {
 		return new Promise((resolve, reject) => {
 			const args = [
-				'--extract-audio',
-				'--audio-format', 'm4a',
-				'--output', outputPath,
+				'-f', '140/bestaudio[ext=m4a]/bestaudio',
+				'-o', outputPath,
+				'--force-overwrites',
 				'--no-playlist',
 				'--no-warnings',
 				'--js-runtimes', `node:${process.execPath}`,

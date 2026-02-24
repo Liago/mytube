@@ -23,15 +23,12 @@ const s3 = new S3Client({
 });
 
 const runYtDlp = async (url, outputPath, cookiesPath) => {
-	const binaryName = 'yt-dlp-linux';
-	const binPath = path.join('/tmp', binaryName);
+	const isLinux = process.platform === 'linux';
+	const binaryName = isLinux ? 'yt-dlp-linux' : 'yt-dlp';
+	const binPath = path.resolve(process.cwd(), binaryName);
 
 	if (!fs.existsSync(binPath)) {
-		try {
-			require('child_process').execSync(`curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ${binPath} && chmod +x ${binPath}`);
-		} catch (e) {
-			throw new Error(`Failed to download yt-dlp: ${e.message}`);
-		}
+		throw new Error(`yt-dlp binary not found at ${binPath}`);
 	}
 
 	const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';

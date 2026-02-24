@@ -22,7 +22,7 @@ const s3 = new S3Client({
 	},
 });
 
-const runYtDlp = async (url, outputPath, cookiesPath) => {
+const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }) => {
 	const isLinux = process.platform === 'linux';
 	const binaryName = isLinux ? 'yt-dlp-linux' : 'yt-dlp';
 	const binPath = path.resolve(process.cwd(), binaryName);
@@ -54,7 +54,7 @@ const runYtDlp = async (url, outputPath, cookiesPath) => {
 			args.push('--user-agent', CHROME_UA);
 			args.push('--compat-options', '2025');
 
-			if (process.env.PROXY_URL && !process.env.PROXY_URL.includes('user:pass@host:port')) {
+			if (process.env.PROXY_URL && !process.env.PROXY_URL.includes('user:pass@host:port') && !ctx.skipProxy) {
 				args.push('--proxy', process.env.PROXY_URL);
 			}
 
@@ -67,7 +67,14 @@ const runYtDlp = async (url, outputPath, cookiesPath) => {
 
 			processProc.on('close', (code) => {
 				if (code === 0) resolve();
-				else reject(new Error(`yt-dlp exited with code ${code}. Stderr: ${stderrOutput}`));
+				else {
+					if (stderrOutput.includes('429 Too Many Requests') || stderrOutput.includes('Unable to connect to proxy') || stderrOutput.includes('ProxyError')) {
+						ctx.skipProxy = true;
+						reject(new Error(`Proxy rate limit detected. Disabling proxy. Stderr: ${stderrOutput}`));
+					} else {
+						reject(new Error(`yt-dlp exited with code ${code}. Stderr: ${stderrOutput}`));
+					}
+				}
 			});
 		});
 	};
@@ -94,7 +101,8 @@ const runYtDlp = async (url, outputPath, cookiesPath) => {
 	const MAX_ATTEMPTS = 6;
 	const cappedStrategies = strategies.slice(0, MAX_ATTEMPTS);
 
-	for (const strategy of cappedStrategies) {
+	for (let i = 0; i < cappedStrategies.length; i++) {
+		const strategy = cappedStrategies[i];
 		if (downloadSuccess) break;
 		try {
 			console.log(`Trying strategy client=${strategy.playerClient}, cookies=${strategy.useCookies}`);
@@ -104,6 +112,10 @@ const runYtDlp = async (url, outputPath, cookiesPath) => {
 		} catch (err) {
 			console.warn(`Strategy failed: ${err.message}`);
 			downloadError = err;
+			if (err.message.includes('Proxy rate limit detected')) {
+				console.log(`Proxy disabled globally. Retrying same strategy without proxy...`);
+				i--; // Retry the same strategy without proxy
+			}
 		}
 	}
 
@@ -156,6 +168,7 @@ const prefetchHandler = async (event) => {
 		}
 
 		// 3. Scan & Download
+		const runCtx = { skipProxy: false };
 		for (const channelId of channels) {
 			console.log(`Scanning channel: ${channelId}`);
 			try {
@@ -178,7 +191,7 @@ const prefetchHandler = async (event) => {
 
 							// Download
 							const tempPath = `/tmp/${videoId}.m4a`;
-							await runYtDlp(video.link, tempPath, fs.existsSync(cookiesPath) ? cookiesPath : null);
+							await runYtDlp(video.link, tempPath, fs.existsSync(cookiesPath) ? cookiesPath : null, runCtx);
 
 							// Upload
 							if (fs.existsSync(tempPath)) {

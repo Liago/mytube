@@ -1,3 +1,9 @@
+## [1.13.0](https://github.com/Liago/mytube/compare/v1.12.3...v1.13.0) (2026-02-24)
+
+### Features
+
+* improves proxy handling and retry logic. ([f70b292](https://github.com/Liago/mytube/commit/f70b292754fc35ae9cee63677f172aa998d1f4b6))
+
 ## [1.12.3](https://github.com/Liago/mytube/compare/v1.12.2...v1.12.3) (2026-02-24)
 
 ### Bug Fixes

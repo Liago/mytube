@@ -77,4 +77,4 @@ const handler = async (event, context) => {
 };
 
 // Schedule: Daily at midnight
-exports.handler = schedule("@daily", handler);
+exports.handler = schedule("0 0 * * *", handler);

@@ -1,3 +1,9 @@
+## [1.12.2](https://github.com/Liago/mytube/compare/v1.12.1...v1.12.2) (2026-02-24)
+
+### Bug Fixes
+
+* fixes yt-dlp binary path resolution ([a54a118](https://github.com/Liago/mytube/commit/a54a1189558f7508a47170b38968d131dd36f78d))
+
 ## [1.12.1](https://github.com/Liago/mytube/compare/v1.12.0...v1.12.1) (2026-02-24)
 
 ### Bug Fixes

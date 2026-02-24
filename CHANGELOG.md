@@ -1,3 +1,9 @@
+## [1.12.3](https://github.com/Liago/mytube/compare/v1.12.2...v1.12.3) (2026-02-24)
+
+### Bug Fixes
+
+* optimizes yt-dlp arguments for audio extraction ([26e8f0d](https://github.com/Liago/mytube/commit/26e8f0da592144cb5b17cd01e1c69bef9f6ce237))
+
 ## [1.12.2](https://github.com/Liago/mytube/compare/v1.12.1...v1.12.2) (2026-02-24)
 
 ### Bug Fixes

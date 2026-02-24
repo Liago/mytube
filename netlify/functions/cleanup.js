@@ -23,8 +23,8 @@ const handler = async (event, context) => {
 		let isTruncated = true;
 		let continuationToken = undefined;
 		let deletedCount = 0;
-		const sevenDaysAgo = new Date();
-		sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+		const thresholdDate = new Date();
+		thresholdDate.setDate(thresholdDate.getDate() - 2);
 
 		while (isTruncated) {
 			const command = new ListObjectsV2Command({
@@ -38,7 +38,7 @@ const handler = async (event, context) => {
 			// Filter old files, preserving "system/" directory
 			const oldFiles = contents.filter(obj => {
 				const isSystemFile = obj.Key.startsWith("system/");
-				const isOld = obj.LastModified < sevenDaysAgo;
+				const isOld = obj.LastModified < thresholdDate;
 				return !isSystemFile && isOld;
 			});
 

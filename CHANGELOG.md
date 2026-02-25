@@ -1,3 +1,9 @@
+## [1.14.0](https://github.com/Liago/mytube/compare/v1.13.0...v1.14.0) (2026-02-24)
+
+### Features
+
+* reduces cleanup threshold to two days ([d46e0a7](https://github.com/Liago/mytube/commit/d46e0a70514c5f02a1ac419182d3f24e30f44ef7))
+
 ## [1.13.0](https://github.com/Liago/mytube/compare/v1.12.3...v1.13.0) (2026-02-24)
 
 ### Features

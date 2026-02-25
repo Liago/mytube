@@ -1,3 +1,9 @@
+## [1.14.1](https://github.com/Liago/mytube/compare/v1.14.0...v1.14.1) (2026-02-25)
+
+### Bug Fixes
+
+* improves audio extraction by handling proxy failures ([25a2029](https://github.com/Liago/mytube/commit/25a2029ad4e077e51f2aa218bb8db29b163f5ea4))
+
 ## [1.14.0](https://github.com/Liago/mytube/compare/v1.13.0...v1.14.0) (2026-02-24)
 
 ### Features

@@ -1,3 +1,9 @@
+## [1.17.0](https://github.com/Liago/mytube/compare/v1.16.0...v1.17.0) (2026-02-25)
+
+### Features
+
+* in-app notification system for prefetched videos ([8f3c52c](https://github.com/Liago/mytube/commit/8f3c52c2f8554a201450f158fd8f1fd3e373d231))
+
 ## [1.16.0](https://github.com/Liago/mytube/compare/v1.15.4...v1.16.0) (2026-02-25)
 
 ### Features

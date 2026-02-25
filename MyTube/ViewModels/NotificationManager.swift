@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UserNotifications
 
 @MainActor
 class NotificationManager: ObservableObject {
@@ -12,8 +13,13 @@ class NotificationManager: ObservableObject {
     
     // Store read IDs locally to compute unread notifications
     private let readNotificationsKey = "ReadNotificationIDs"
+    // Store already prompted notifications
+    private let notifiedKey = "NotifiedNotificationIDs"
     
     private init() {
+        // Request Permissions
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+        
         // Load initial state
         Task {
             await fetchNotifications()
@@ -39,6 +45,9 @@ class NotificationManager: ObservableObject {
             }
             
             self.notifications = try JSONDecoder().decode([AppNotification].self, from: data)
+            
+            // Trigger Local System Notifications for new items
+            triggerLocalNotificationsForNewItems()
             updateUnreadCount()
             
         } catch {
@@ -47,6 +56,37 @@ class NotificationManager: ObservableObject {
         }
         
         isLoading = false
+    }
+    
+    private func triggerLocalNotificationsForNewItems() {
+        let notifiedIds = UserDefaults.standard.stringArray(forKey: notifiedKey) ?? []
+        var newNotifiedIds = notifiedIds
+        var hasNew = false
+        
+        // Walk from oldest to newest to throw notifications sequentially
+        for notif in self.notifications.reversed() {
+            let key = "\(notif.id)_\(notif.timestamp)"
+            if !notifiedIds.contains(key) {
+                scheduleLocalNotification(for: notif)
+                newNotifiedIds.append(key)
+                hasNew = true
+            }
+        }
+        
+        if hasNew {
+            if newNotifiedIds.count > 200 { newNotifiedIds.removeFirst(100) }
+            UserDefaults.standard.set(newNotifiedIds, forKey: notifiedKey)
+        }
+    }
+    
+    private func scheduleLocalNotification(for notif: AppNotification) {
+        let content = UNMutableNotificationContent()
+        content.title = "Prefetch Completato"
+        content.body = "\(notif.title) da \(notif.channelInfo)"
+        content.sound = .default
+        
+        let request = UNNotificationRequest(identifier: "prefetch_\(notif.id)_\(notif.timestamp)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
     }
     
     func markAllAsRead() {

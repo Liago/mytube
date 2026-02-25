@@ -207,7 +207,7 @@ exports.handler = async (event, context) => {
 				args.push('--compat-options', '2025');
 
 				// Proxy support
-				const proxyUrl = process.env.PROXY_URL ? process.env.PROXY_URL.trim() : null;
+				const proxyUrl = process.env.PROXY_URL ? process.env.PROXY_URL.replace(/\s+/g, '') : null;
 				if (proxyUrl && !ctx.skipProxy && proxyUrl.startsWith('http')) {
 					logger.info(`Using Proxy: ${proxyUrl}`);
 					args.push('--proxy', proxyUrl);

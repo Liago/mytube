@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct LogFile: Identifiable, Codable {
     var id: String { key }
@@ -25,10 +26,14 @@ struct LogFilesResponse: Codable {
 }
 
 struct LogEntry: Identifiable, Codable {
-    let id = UUID()
+    var id = UUID()
     let timestamp: String
     let level: String
     let message: String
+    
+    enum CodingKeys: String, CodingKey {
+        case timestamp, level, message
+    }
 }
 
 struct LogDetail: Codable {
@@ -61,7 +66,7 @@ class LogsViewModel: ObservableObject {
             }
             
             var request = URLRequest(url: url)
-            request.addValue(AppConfig.apiSecret, forHTTPHeaderField: "X-Api-Key")
+            request.addValue(Secrets.apiSecret, forHTTPHeaderField: "X-Api-Key")
             
             let (data, response) = try await URLSession.shared.data(for: request)
             
@@ -93,7 +98,7 @@ class LogsViewModel: ObservableObject {
             }
             
             var request = URLRequest(url: url)
-            request.addValue(AppConfig.apiSecret, forHTTPHeaderField: "X-Api-Key")
+            request.addValue(Secrets.apiSecret, forHTTPHeaderField: "X-Api-Key")
             
             let (data, response) = try await URLSession.shared.data(for: request)
             
@@ -131,7 +136,8 @@ class LogsViewModel: ObservableObject {
     }
     
     private func constructURL(path: String, queryItems: [URLQueryItem]? = nil) -> URL? {
-        var components = URLComponents(string: AppConfig.apiBaseURL + path)
+        let baseURL = "https://mytube-be.netlify.app"
+        var components = URLComponents(string: baseURL + path)
         components?.queryItems = queryItems
         return components?.url
     }

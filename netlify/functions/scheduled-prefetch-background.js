@@ -179,6 +179,7 @@ const prefetchHandler = async (event) => {
 		}
 
 		// 3. Scan & Download
+		const newNotifications = [];
 		const runCtx = { skipProxy: false, logger };
 		for (const channelId of channels) {
 			logger.info(`Scanning channel: ${channelId}`);
@@ -216,6 +217,15 @@ const prefetchHandler = async (event) => {
 									ContentLength: stats.size
 								}));
 								logger.info(`Uploaded ${videoId} to R2.`);
+
+								// Record notification
+								newNotifications.push({
+									id: videoId,
+									title: video.title || 'Unknown Title',
+									channelInfo: feed.title || channelId,
+									timestamp: new Date().toISOString()
+								});
+
 								fs.unlinkSync(tempPath); // Cleanup
 							}
 						}
@@ -224,6 +234,39 @@ const prefetchHandler = async (event) => {
 
 			} catch (err) {
 				logger.error(`Error processing channel ${channelId}: ${err.message}`);
+			}
+		}
+
+		// 4. Flush Notifications to R2
+		if (newNotifications.length > 0) {
+			try {
+				let currentNotifications = [];
+				try {
+					const notifsData = await s3.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: 'system/notifications.json' }));
+					const str = await notifsData.Body.transformToString();
+					currentNotifications = JSON.parse(str);
+				} catch (err) {
+					// Either file doesn't exist or is invalid JSON
+					logger.info("No existing notifications found or failed to parse, starting fresh.");
+				}
+
+				// Prepend new notifications
+				currentNotifications.unshift(...newNotifications);
+
+				// Cap at 100 items to avoid infinite growth
+				if (currentNotifications.length > 100) {
+					currentNotifications = currentNotifications.slice(0, 100);
+				}
+
+				await s3.send(new PutObjectCommand({
+					Bucket: R2_BUCKET_NAME,
+					Key: 'system/notifications.json',
+					Body: JSON.stringify(currentNotifications),
+					ContentType: 'application/json'
+				}));
+				logger.info(`Saved ${newNotifications.length} new notifications to system/notifications.json`);
+			} catch (err) {
+				logger.error(`Failed to flush notifications: ${err.message}`);
 			}
 		}
 

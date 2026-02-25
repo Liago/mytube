@@ -4,6 +4,9 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @State private var selectedChannel: (id: String, title: String)?
     
+    @ObservedObject var notifManager = NotificationManager.shared
+    @State private var showingNotifications = false
+    
     var body: some View {
         NavigationView {
             ZStack {
@@ -53,9 +56,37 @@ struct HomeView: View {
             }
             .navigationTitle("Home")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        showingNotifications = true
+                    }) {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "bell.fill")
+                                .font(.body)
+                                .foregroundColor(.primary)
+                            
+                            if notifManager.unreadCount > 0 {
+                                Text("\(notifManager.unreadCount)")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .background(Color.red)
+                                    .clipShape(Capsule())
+                                    .offset(x: 8, y: -6)
+                            }
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showingNotifications) {
+                NotificationsView()
+            }
         }
         .task {
             await viewModel.loadHomeVideos()
+            await notifManager.fetchNotifications()
         }
     }
     

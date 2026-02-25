@@ -196,7 +196,7 @@ exports.handler = async (event, context) => {
 			args.push('--compat-options', '2025');
 
 			// Proxy support
-			if (process.env.PROXY_URL && !process.env.PROXY_URL.includes('user:pass@host:port')) {
+			if (process.env.PROXY_URL && process.env.PROXY_URL.startsWith('http')) {
 				console.log('Using Proxy:', process.env.PROXY_URL);
 				args.push('--proxy', process.env.PROXY_URL);
 			} else if (process.env.PROXY_URL) {

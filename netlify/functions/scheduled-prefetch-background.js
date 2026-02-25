@@ -4,7 +4,14 @@ const Parser = require('rss-parser');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const parser = new Parser();
+const parser = new Parser({
+	customFields: {
+		item: ['media:group', 'media:title']
+	},
+	headers: {
+		'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+	}
+});
 
 // Configuration
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
@@ -54,7 +61,7 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 			args.push('--user-agent', CHROME_UA);
 			args.push('--compat-options', '2025');
 
-			if (process.env.PROXY_URL && !process.env.PROXY_URL.includes('user:pass@host:port') && !ctx.skipProxy) {
+			if (process.env.PROXY_URL && !ctx.skipProxy && process.env.PROXY_URL.startsWith('http')) {
 				args.push('--proxy', process.env.PROXY_URL);
 			}
 

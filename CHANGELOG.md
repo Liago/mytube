@@ -1,3 +1,9 @@
+## [1.15.3](https://github.com/Liago/mytube/compare/v1.15.2...v1.15.3) (2026-02-25)
+
+### Bug Fixes
+
+* resolve 404 NSURLError in LogsView by adding netlify functions path prefix ([eaee09c](https://github.com/Liago/mytube/commit/eaee09c2d477f11e2b178f646625b6accdfda15b))
+
 ## [1.15.2](https://github.com/Liago/mytube/compare/v1.15.1...v1.15.2) (2026-02-25)
 
 ### Bug Fixes

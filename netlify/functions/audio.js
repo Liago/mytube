@@ -169,7 +169,7 @@ exports.handler = async (event, context) => {
 		const PLAYER_CLIENTS = ['tv_embedded', 'web_creator', 'mweb', 'android', 'ios', 'web', 'android_creator'];
 
 		// Helper function to run yt-dlp with a specific strategy
-		const runYtDlp = async (useCookies, playerClient) => {
+		const runYtDlp = async (useCookies, playerClient, ctx = { skipProxy: false }) => {
 			const args = [
 				`https://www.youtube.com/watch?v=${videoId}`,
 				'-f', '140/bestaudio[ext=m4a]/bestaudio',
@@ -196,9 +196,11 @@ exports.handler = async (event, context) => {
 			args.push('--compat-options', '2025');
 
 			// Proxy support
-			if (process.env.PROXY_URL && process.env.PROXY_URL.startsWith('http')) {
+			if (process.env.PROXY_URL && !ctx.skipProxy && process.env.PROXY_URL.startsWith('http')) {
 				console.log('Using Proxy:', process.env.PROXY_URL);
 				args.push('--proxy', process.env.PROXY_URL);
+			} else if (process.env.PROXY_URL && ctx.skipProxy) {
+				console.log('Proxy disabled for this request due to previous error.');
 			} else if (process.env.PROXY_URL) {
 				console.warn('Ignoring invalid/placeholder PROXY_URL:', process.env.PROXY_URL);
 			}
@@ -219,7 +221,14 @@ exports.handler = async (event, context) => {
 			return new Promise((resolve, reject) => {
 				child.on('exit', (code) => {
 					if (code === 0) resolve();
-					else reject(new Error(`yt-dlp exited with code ${code}. Stderr: ${stderrOutput}`));
+					else {
+						if (stderrOutput.includes('429 Too Many Requests') || stderrOutput.includes('407 Proxy Authentication Required') || stderrOutput.includes('ProxyError') || stderrOutput.includes('Unable to connect to proxy')) {
+							ctx.skipProxy = true;
+							reject(new Error(`Proxy error detected. Disabling proxy. Stderr: ${stderrOutput}`));
+						} else {
+							reject(new Error(`yt-dlp exited with code ${code}. Stderr: ${stderrOutput}`));
+						}
+					}
 				});
 				child.on('error', (err) => reject(err));
 			});
@@ -249,23 +258,30 @@ exports.handler = async (event, context) => {
 			}
 		}
 
-		// Cap strategies to avoid Netlify function timeout (26s limit)
 		const MAX_ATTEMPTS = 6;
 		const cappedStrategies = strategies.slice(0, MAX_ATTEMPTS);
 		console.log(`Will try up to ${cappedStrategies.length} strategies (of ${strategies.length} total) for ${videoId}`);
 
-		for (const strategy of cappedStrategies) {
+		const runCtx = { skipProxy: false };
+
+		for (let i = 0; i < cappedStrategies.length; i++) {
+			const strategy = cappedStrategies[i];
 			if (downloadSuccess) break;
 			attemptCount++;
 			const label = `[${attemptCount}/${cappedStrategies.length}] client=${strategy.playerClient}, cookies=${strategy.useCookies}`;
 			try {
 				console.log(`Strategy ${label}: attempting...`);
-				await runYtDlp(strategy.useCookies, strategy.playerClient);
+				await runYtDlp(strategy.useCookies, strategy.playerClient, runCtx);
 				downloadSuccess = true;
 				console.log(`Strategy ${label}: SUCCESS`);
 			} catch (err) {
 				console.warn(`Strategy ${label}: FAILED - ${err.message}`);
 				downloadError = err;
+				if (err.message.includes('Proxy error detected')) {
+					console.log(`Proxy disabled globally for this video. Retrying same strategy without proxy...`);
+					i--; // Retry the same strategy without proxy
+					attemptCount--; // Revert the attempt counter so the log is consistent
+				}
 			}
 		}
 

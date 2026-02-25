@@ -1,3 +1,9 @@
+## [1.18.0](https://github.com/Liago/mytube/compare/v1.17.0...v1.18.0) (2026-02-25)
+
+### Features
+
+* trigger local system push notifications for new prefetched videos ([069e6b2](https://github.com/Liago/mytube/commit/069e6b2859951fbd9c09c19117287f60055e6227))
+
 ## [1.17.0](https://github.com/Liago/mytube/compare/v1.16.0...v1.17.0) (2026-02-25)
 
 ### Features

@@ -1,3 +1,9 @@
+## [1.15.1](https://github.com/Liago/mytube/compare/v1.15.0...v1.15.1) (2026-02-25)
+
+### Bug Fixes
+
+* resolve iOS compilation errors in LogsView ([a893fe4](https://github.com/Liago/mytube/commit/a893fe400b8e94e28c90f2a6e64c66789e02d8c9))
+
 ## [1.15.0](https://github.com/Liago/mytube/compare/v1.14.1...v1.15.0) (2026-02-25)
 
 ### Features

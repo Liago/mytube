@@ -61,8 +61,9 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 			args.push('--user-agent', CHROME_UA);
 			args.push('--compat-options', '2025');
 
-			if (process.env.PROXY_URL && !ctx.skipProxy && process.env.PROXY_URL.startsWith('http')) {
-				args.push('--proxy', process.env.PROXY_URL);
+			const proxyUrl = (process.env.PROXY_URL || '').trim();
+			if (proxyUrl && !ctx.skipProxy && proxyUrl.startsWith('http')) {
+				args.push('--proxy', proxyUrl);
 			}
 
 			const processProc = spawn(binPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -112,15 +113,15 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 		const strategy = cappedStrategies[i];
 		if (downloadSuccess) break;
 		try {
-			console.log(`Trying strategy client=${strategy.playerClient}, cookies=${strategy.useCookies}`);
+			if (ctx.logger) ctx.logger.info(`Trying strategy client=${strategy.playerClient}, cookies=${strategy.useCookies}`);
 			await executeStrategy(strategy.useCookies, strategy.playerClient);
 			downloadSuccess = true;
-			console.log(`Success with strategy client=${strategy.playerClient}`);
+			if (ctx.logger) ctx.logger.info(`Success with strategy client=${strategy.playerClient}`);
 		} catch (err) {
-			console.warn(`Strategy failed: ${err.message}`);
+			if (ctx.logger) ctx.logger.warn(`Strategy failed: ${err.message}`);
 			downloadError = err;
-			if (err.message.includes('Proxy rate limit detected')) {
-				console.log(`Proxy disabled globally. Retrying same strategy without proxy...`);
+			if (err.message.includes('Proxy rate limit detected') || err.message.includes('Proxy error detected')) {
+				if (ctx.logger) ctx.logger.info(`Proxy disabled globally. Retrying same strategy without proxy...`);
 				i--; // Retry the same strategy without proxy
 			}
 		}
@@ -132,7 +133,9 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 };
 
 const prefetchHandler = async (event) => {
-	console.log("Starting Scheduled Prefetch...");
+	const Logger = require('./lib/logger');
+	const logger = new Logger('scheduled-prefetch');
+	logger.info("Starting Scheduled Prefetch...");
 
 	try {
 		let channels = [];
@@ -143,12 +146,13 @@ const prefetchHandler = async (event) => {
 			// Use prefetchChannels if present, fallback to channels for retrocompatibility
 			channels = prefs.prefetchChannels || prefs.channels || [];
 		} catch (e) {
-			console.log("No preferences found or error reading prefs:", e.message);
+			logger.warn(`No preferences found or error reading prefs: ${e.message}`);
 			return;
 		}
 
 		if (channels.length === 0) {
-			console.log("No prefetch channels to scan.");
+			logger.info("No prefetch channels to scan.");
+			await logger.save();
 			return;
 		}
 
@@ -170,14 +174,14 @@ const prefetchHandler = async (event) => {
 			fs.writeFileSync(cookiesPath, '# Netscape HTTP Cookie File\n' + netscapeCookies);
 
 		} catch (e) {
-			console.log("Could not load/convert cookies:", e.message);
+			logger.warn(`Could not load/convert cookies: ${e.message}`);
 			// Continue without cookies? Might fail for some videos.
 		}
 
 		// 3. Scan & Download
-		const runCtx = { skipProxy: false };
+		const runCtx = { skipProxy: false, logger };
 		for (const channelId of channels) {
-			console.log(`Scanning channel: ${channelId}`);
+			logger.info(`Scanning channel: ${channelId}`);
 			try {
 				const feed = await parser.parseURL(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`);
 
@@ -191,10 +195,10 @@ const prefetchHandler = async (event) => {
 					// Check availability
 					try {
 						await s3.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: r2Key }));
-						console.log(`Video ${videoId} already exists. Skipping.`);
+						logger.info(`Video ${videoId} already exists. Skipping.`);
 					} catch (e) {
 						if (e.name === 'NotFound' || e.name === '404') {
-							console.log(`Video ${videoId} missing. Downloading...`);
+							logger.info(`Video ${videoId} missing. Downloading...`);
 
 							// Download
 							const tempPath = `/tmp/${videoId}.m4a`;
@@ -211,7 +215,7 @@ const prefetchHandler = async (event) => {
 									ContentType: 'audio/mp4',
 									ContentLength: stats.size
 								}));
-								console.log(`Uploaded ${videoId} to R2.`);
+								logger.info(`Uploaded ${videoId} to R2.`);
 								fs.unlinkSync(tempPath); // Cleanup
 							}
 						}
@@ -219,12 +223,14 @@ const prefetchHandler = async (event) => {
 				}
 
 			} catch (err) {
-				console.error(`Error processing channel ${channelId}:`, err.message);
+				logger.error(`Error processing channel ${channelId}: ${err.message}`);
 			}
 		}
 
 	} catch (error) {
-		console.error("Prefetch critical error:", error);
+		logger.error(`Prefetch critical error: ${error.message}`);
+	} finally {
+		await logger.save();
 	}
 };
 

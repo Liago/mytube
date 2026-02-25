@@ -13,9 +13,9 @@ struct MainTabView: View {
                     Label("Subscriptions", systemImage: "person.2.fill")
                 }
             
-            MyPlaylistsView()
+            LogsView()
                 .tabItem {
-                    Label("Playlists", systemImage: "music.note.list")
+                    Label("Logs", systemImage: "doc.text.fill")
                 }
             
             ProfileView()

@@ -35,11 +35,12 @@ const handler = async (event, context) => {
 			const response = await s3.send(command);
 			const contents = response.Contents || [];
 
-			// Filter old files, preserving "system/" directory
+			// Filter old files, preserving "system/" and "logs/" directory
 			const oldFiles = contents.filter(obj => {
 				const isSystemFile = obj.Key.startsWith("system/");
+				const isLogFile = obj.Key.startsWith("logs/");
 				const isOld = obj.LastModified < thresholdDate;
-				return !isSystemFile && isOld;
+				return !isSystemFile && !isLogFile && isOld;
 			});
 
 			if (oldFiles.length > 0) {

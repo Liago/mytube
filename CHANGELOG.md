@@ -1,3 +1,9 @@
+## [1.16.0](https://github.com/Liago/mytube/compare/v1.15.4...v1.16.0) (2026-02-25)
+
+### Features
+
+* inject R2 unified logger into cleanup scheduled function ([a0ec8cc](https://github.com/Liago/mytube/commit/a0ec8cc604b47225a3210543e66b267b1c2c10b0))
+
 ## [1.15.4](https://github.com/Liago/mytube/compare/v1.15.3...v1.15.4) (2026-02-25)
 
 ### Bug Fixes

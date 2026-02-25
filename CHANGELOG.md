@@ -1,3 +1,9 @@
+## [1.15.0](https://github.com/Liago/mytube/compare/v1.14.1...v1.15.0) (2026-02-25)
+
+### Features
+
+* implement centralized R2 logger, fix proxy url parsing, replace iOS Playlists tab with Logs ([863b82f](https://github.com/Liago/mytube/commit/863b82f72cd55968892240b9d63ee445069064b9))
+
 ## [1.14.1](https://github.com/Liago/mytube/compare/v1.14.0...v1.14.1) (2026-02-25)
 
 ### Bug Fixes

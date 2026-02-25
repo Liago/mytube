@@ -1,3 +1,9 @@
+## [1.15.2](https://github.com/Liago/mytube/compare/v1.15.1...v1.15.2) (2026-02-25)
+
+### Bug Fixes
+
+* replace remaining AppConfig reference with Secrets in LogsView ([11c13ba](https://github.com/Liago/mytube/commit/11c13ba561fbce5b951dedc9e137237cd3faea2f))
+
 ## [1.15.1](https://github.com/Liago/mytube/compare/v1.15.0...v1.15.1) (2026-02-25)
 
 ### Bug Fixes

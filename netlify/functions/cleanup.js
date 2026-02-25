@@ -16,7 +16,10 @@ const s3 = new S3Client({
 });
 
 const handler = async (event, context) => {
-	console.log("Starting daily cleanup...");
+	const Logger = require('./lib/logger');
+	const logger = new Logger('cleanup');
+
+	logger.info("Starting daily cleanup...");
 
 	try {
 		// List all objects
@@ -54,14 +57,14 @@ const handler = async (event, context) => {
 
 				await s3.send(new DeleteObjectsCommand(deleteParams));
 				deletedCount += oldFiles.length;
-				console.log(`Deleted ${oldFiles.length} files.`);
+				logger.info(`Deleted ${oldFiles.length} files.`);
 			}
 
 			isTruncated = response.IsTruncated;
 			continuationToken = response.NextContinuationToken;
 		}
 
-		console.log(`Cleanup complete. Total deleted: ${deletedCount}`);
+		logger.info(`Cleanup complete. Total deleted: ${deletedCount}`);
 
 		return {
 			statusCode: 200,
@@ -69,11 +72,13 @@ const handler = async (event, context) => {
 		};
 
 	} catch (error) {
-		console.error("Cleanup failed:", error);
+		logger.error(`Cleanup failed: ${error.message}`);
 		return {
 			statusCode: 500,
 			body: JSON.stringify({ error: error.message }),
 		};
+	} finally {
+		await logger.save();
 	}
 };
 

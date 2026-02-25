@@ -136,7 +136,7 @@ class LogsViewModel: ObservableObject {
     }
     
     private func constructURL(path: String, queryItems: [URLQueryItem]? = nil) -> URL? {
-        let baseURL = "https://mytube-be.netlify.app"
+        let baseURL = "https://mytube-be.netlify.app/.netlify/functions"
         var components = URLComponents(string: baseURL + path)
         components?.queryItems = queryItems
         return components?.url

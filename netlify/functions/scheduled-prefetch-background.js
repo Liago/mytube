@@ -61,7 +61,7 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 			args.push('--user-agent', CHROME_UA);
 			args.push('--compat-options', '2025');
 
-			const proxyUrl = (process.env.PROXY_URL || '').trim();
+			const proxyUrl = (process.env.PROXY_URL || '').replace(/\s+/g, '');
 			if (proxyUrl && !ctx.skipProxy && proxyUrl.startsWith('http')) {
 				args.push('--proxy', proxyUrl);
 			}

@@ -1,3 +1,9 @@
+## [1.15.4](https://github.com/Liago/mytube/compare/v1.15.3...v1.15.4) (2026-02-25)
+
+### Bug Fixes
+
+* aggressively strip whitespaces from proxy_url to prevent InvalidURL yt-dlp aborts ([8d321b8](https://github.com/Liago/mytube/commit/8d321b86245397164937393679163d1b88410950))
+
 ## [1.15.3](https://github.com/Liago/mytube/compare/v1.15.2...v1.15.3) (2026-02-25)
 
 ### Bug Fixes

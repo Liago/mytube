@@ -124,7 +124,7 @@ class LogsViewModel: ObservableObject {
         }
         
         var request = URLRequest(url: url)
-        request.addValue(AppConfig.apiSecret, forHTTPHeaderField: "X-Api-Key")
+        request.addValue(Secrets.apiSecret, forHTTPHeaderField: "X-Api-Key")
         
         let (data, response) = try await URLSession.shared.data(for: request)
         

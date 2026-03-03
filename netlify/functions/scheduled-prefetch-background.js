@@ -93,7 +93,6 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 
 	const strategies = [];
 	if (hasCookies) {
-		strategies.push({ useCookies: true, playerClient: 'ios' });
 		strategies.push({ useCookies: true, playerClient: 'android_creator' });
 		strategies.push({ useCookies: true, playerClient: 'web' });
 		strategies.push({ useCookies: false, playerClient: 'tv_embedded' });
@@ -234,6 +233,17 @@ const prefetchHandler = async (event) => {
 
 			} catch (err) {
 				logger.error(`Error processing channel ${channelId}: ${err.message}`);
+				// Detect bot-check error and push in-app notification
+				if (err.message.includes('Sign in to confirm you\'re not a bot')) {
+					newNotifications.push({
+						id: `bot-check-${Date.now()}`,
+						title: '⚠️ Cookie scaduti — Aggiorna i cookies',
+						channelInfo: 'Sistema',
+						timestamp: new Date().toISOString(),
+						type: 'error',
+						message: 'YouTube richiede il login: "Sign in to confirm you\'re not a bot". Ricaricare cookies freschi su R2.'
+					});
+				}
 			}
 		}
 
@@ -277,5 +287,5 @@ const prefetchHandler = async (event) => {
 	}
 };
 
-// Schedule: Run every 6 hours
-exports.handler = schedule("0 */6 * * *", prefetchHandler);
+// Schedule: Run every 3 hours
+exports.handler = schedule("0 */3 * * *", prefetchHandler);

@@ -1,3 +1,9 @@
+## [1.20.0](https://github.com/Liago/mytube/compare/v1.19.0...v1.20.0) (2026-03-03)
+
+### Features
+
+* **prefetch:** schedule 3h, bot-check notification, android_creator strategy ([9ab930c](https://github.com/Liago/mytube/commit/9ab930c9c84e708e2e941bbe802cce0300edfb27))
+
 ## [1.19.0](https://github.com/Liago/mytube/compare/v1.18.0...v1.19.0) (2026-03-03)
 
 ### Features

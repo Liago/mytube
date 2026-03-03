@@ -1,3 +1,9 @@
+## [1.19.0](https://github.com/Liago/mytube/compare/v1.18.0...v1.19.0) (2026-03-03)
+
+### Features
+
+* optimizes prefetch schedule and bot-check handling ([45ae82c](https://github.com/Liago/mytube/commit/45ae82cbf4a42b308e3487df7c25eeaa8c468a67))
+
 ## [1.18.0](https://github.com/Liago/mytube/compare/v1.17.0...v1.18.0) (2026-02-25)
 
 ### Features

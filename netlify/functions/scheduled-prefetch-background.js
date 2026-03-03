@@ -96,7 +96,7 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 		strategies.push({ useCookies: true, playerClient: 'android_creator' });
 		strategies.push({ useCookies: true, playerClient: 'web' });
 		strategies.push({ useCookies: false, playerClient: 'tv_embedded' });
-		strategies.push({ useCookies: true, playerClient: 'tv_embedded' });
+		strategies.push({ useCookies: true, playerClient: 'ios' });
 		strategies.push({ useCookies: false, playerClient: 'android' });
 		strategies.push({ useCookies: true, playerClient: 'mweb' });
 	} else {
@@ -234,14 +234,15 @@ const prefetchHandler = async (event) => {
 			} catch (err) {
 				logger.error(`Error processing channel ${channelId}: ${err.message}`);
 				// Detect bot-check error and push in-app notification
-				if (err.message.includes('Sign in to confirm you\'re not a bot')) {
+				if (err.message.includes('Sign in to confirm')) {
+					logger.info('Bot-check detected! Pushing cookie refresh notification.');
 					newNotifications.push({
 						id: `bot-check-${Date.now()}`,
 						title: '⚠️ Cookie scaduti — Aggiorna i cookies',
 						channelInfo: 'Sistema',
 						timestamp: new Date().toISOString(),
 						type: 'error',
-						message: 'YouTube richiede il login: "Sign in to confirm you\'re not a bot". Ricaricare cookies freschi su R2.'
+						message: 'YouTube richiede il login: "Sign in to confirm you are not a bot". Ricaricare cookies freschi su R2.'
 					});
 				}
 			}

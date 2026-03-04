@@ -1,3 +1,9 @@
+## [1.21.0](https://github.com/Liago/mytube/compare/v1.20.0...v1.21.0) (2026-03-03)
+
+### Features
+
+* add log cleanup to scheduled cleanup function (7-day retention) ([af870b6](https://github.com/Liago/mytube/commit/af870b64b1f8cf90d2dafcdf037ad760427a96ad))
+
 ## [1.20.0](https://github.com/Liago/mytube/compare/v1.19.0...v1.20.0) (2026-03-03)
 
 ### Features

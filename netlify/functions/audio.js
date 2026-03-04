@@ -92,8 +92,8 @@ exports.handler = async (event, context) => {
 			const convertToNetscape = (cookies) => {
 				let netscapeContent = "# Netscape HTTP Cookie File\n";
 				cookies.forEach(c => {
-					const domain = c.domain;
-					const includeSubdomains = domain.startsWith('.') ? 'TRUE' : 'FALSE';
+					const domain = c.domain.startsWith('.') ? c.domain : `.${c.domain}`;
+					const includeSubdomains = 'TRUE';
 					const cookiePath = c.path;
 					const secure = c.secure ? 'TRUE' : 'FALSE';
 					const expiration = c.expirationDate ? Math.round(c.expirationDate) : 0;
@@ -186,6 +186,7 @@ exports.handler = async (event, context) => {
 					'-f', '140/bestaudio[ext=m4a]/bestaudio',
 					'-o', tmpFilePath,
 					'--force-overwrites',
+					'--no-playlist',
 					'--no-warnings',
 					'--write-info-json',
 					'--js-runtimes', `node:${process.execPath}`,
@@ -255,12 +256,11 @@ exports.handler = async (event, context) => {
 			const strategies = [];
 
 			if (hasCookies) {
-				// Mixed strategy: try most permissive clients without cookies first, then with
-				strategies.push({ useCookies: true, playerClient: 'ios' }); // iOS with cookies is often very stable
+				// Aligned with scheduled-prefetch: android_creator first (most reliable)
 				strategies.push({ useCookies: true, playerClient: 'android_creator' });
-				strategies.push({ useCookies: true, playerClient: 'web' }); // Fallback web with cookies
+				strategies.push({ useCookies: true, playerClient: 'web' });
 				strategies.push({ useCookies: false, playerClient: 'tv_embedded' });
-				strategies.push({ useCookies: true, playerClient: 'tv_embedded' });
+				strategies.push({ useCookies: true, playerClient: 'ios' });
 				strategies.push({ useCookies: false, playerClient: 'android' });
 				strategies.push({ useCookies: true, playerClient: 'mweb' });
 			} else {

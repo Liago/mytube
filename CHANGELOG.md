@@ -1,3 +1,9 @@
+## [1.22.0](https://github.com/Liago/mytube/compare/v1.21.0...v1.22.0) (2026-03-04)
+
+### Features
+
+* align player strategies and improve cookie formatting ([0dbb6d4](https://github.com/Liago/mytube/commit/0dbb6d4afd0e7232529894c2b798341de5530538))
+
 ## [1.21.0](https://github.com/Liago/mytube/compare/v1.20.0...v1.21.0) (2026-03-03)
 
 ### Features

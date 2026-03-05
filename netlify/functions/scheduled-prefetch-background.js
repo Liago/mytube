@@ -44,7 +44,7 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 	const executeStrategy = async (useCookies, playerClient) => {
 		return new Promise((resolve, reject) => {
 			const args = [
-				'-f', '140/bestaudio[ext=m4a]/bestaudio',
+				'-f', '140/bestaudio[ext=m4a]/bestaudio/18/best',
 				'-o', outputPath,
 				'--force-overwrites',
 				'--no-playlist',

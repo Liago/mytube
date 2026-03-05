@@ -259,9 +259,9 @@ exports.handler = async (event, context) => {
 				// Aligned with scheduled-prefetch: android_creator first (most reliable)
 				strategies.push({ useCookies: true, playerClient: 'android_creator' });
 				strategies.push({ useCookies: true, playerClient: 'web' });
-				strategies.push({ useCookies: false, playerClient: 'tv_embedded' });
+				strategies.push({ useCookies: true, playerClient: 'tv_embedded' });
 				strategies.push({ useCookies: true, playerClient: 'ios' });
-				strategies.push({ useCookies: false, playerClient: 'android' });
+				strategies.push({ useCookies: true, playerClient: 'android' });
 				strategies.push({ useCookies: true, playerClient: 'mweb' });
 			} else {
 				// No cookies available, just try clients in order

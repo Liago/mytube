@@ -1,3 +1,9 @@
+## [1.22.1](https://github.com/Liago/mytube/compare/v1.22.0...v1.22.1) (2026-03-05)
+
+### Bug Fixes
+
+* **audio:** Change yt-dlp format fallback to include 18 to fix missing format errors ([1feb8a6](https://github.com/Liago/mytube/commit/1feb8a60be0ed448e356ce8033dbe80d7e36906b))
+
 ## [1.22.0](https://github.com/Liago/mytube/compare/v1.21.0...v1.22.0) (2026-03-04)
 
 ### Features

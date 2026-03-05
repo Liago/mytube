@@ -183,7 +183,7 @@ exports.handler = async (event, context) => {
 			const runYtDlp = async (useCookies, playerClient, ctx = { skipProxy: false }) => {
 				const args = [
 					`https://www.youtube.com/watch?v=${videoId}`,
-					'-f', '140/bestaudio[ext=m4a]/bestaudio',
+					'-f', '140/bestaudio[ext=m4a]/bestaudio/18/best',
 					'-o', tmpFilePath,
 					'--force-overwrites',
 					'--no-playlist',

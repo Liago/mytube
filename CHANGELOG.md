@@ -1,3 +1,9 @@
+## [1.22.2](https://github.com/Liago/mytube/compare/v1.22.1...v1.22.2) (2026-03-05)
+
+### Bug Fixes
+
+* always pass cookies in yt-dlp strategies when available ([5317d14](https://github.com/Liago/mytube/commit/5317d145e5c321f0458658fd5a6176d553f090de))
+
 ## [1.22.1](https://github.com/Liago/mytube/compare/v1.22.0...v1.22.1) (2026-03-05)
 
 ### Bug Fixes

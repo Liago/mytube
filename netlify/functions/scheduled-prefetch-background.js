@@ -95,9 +95,9 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 	if (hasCookies) {
 		strategies.push({ useCookies: true, playerClient: 'android_creator' });
 		strategies.push({ useCookies: true, playerClient: 'web' });
-		strategies.push({ useCookies: false, playerClient: 'tv_embedded' });
+		strategies.push({ useCookies: true, playerClient: 'tv_embedded' });
 		strategies.push({ useCookies: true, playerClient: 'ios' });
-		strategies.push({ useCookies: false, playerClient: 'android' });
+		strategies.push({ useCookies: true, playerClient: 'android' });
 		strategies.push({ useCookies: true, playerClient: 'mweb' });
 	} else {
 		for (const client of PLAYER_CLIENTS) {

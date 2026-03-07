@@ -1,3 +1,9 @@
+## [1.22.3](https://github.com/Liago/mytube/compare/v1.22.2...v1.22.3) (2026-03-07)
+
+### Bug Fixes
+
+* **prefetch:** reduce YouTube bot detection with delays and early abort ([7d6d71f](https://github.com/Liago/mytube/commit/7d6d71f274a2b835f3ad2d642608f7e7a0251fbb))
+
 ## [1.22.2](https://github.com/Liago/mytube/compare/v1.22.1...v1.22.2) (2026-03-05)
 
 ### Bug Fixes

@@ -13,6 +13,12 @@ const parser = new Parser({
 	}
 });
 
+// Helper: sleep for a random duration between min and max milliseconds
+const sleep = (minMs, maxMs) => {
+	const ms = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+	return new Promise(resolve => setTimeout(resolve, ms));
+};
+
 // Configuration
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
@@ -60,6 +66,10 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 			args.push('--extractor-args', `youtube:player_client=${playerClient}`);
 			args.push('--user-agent', CHROME_UA);
 			args.push('--compat-options', '2025');
+			// Fix E: Add intra-request delays so yt-dlp's own HTTP calls aren't bursty
+			args.push('--sleep-requests', '2');
+			args.push('--sleep-interval', '3');
+			args.push('--max-sleep-interval', '10');
 
 			const proxyUrl = (process.env.PROXY_URL || '').replace(/\s+/g, '');
 			if (proxyUrl && !ctx.skipProxy && proxyUrl.startsWith('http')) {
@@ -180,15 +190,25 @@ const prefetchHandler = async (event) => {
 		// 3. Scan & Download
 		const newNotifications = [];
 		const runCtx = { skipProxy: false, logger };
-		for (const channelId of channels) {
+
+		// Track bot detection across the entire run — abort everything if triggered
+		let botDetected = false;
+
+		for (let ci = 0; ci < channels.length; ci++) {
+			if (botDetected) break;
+
+			const channelId = channels[ci];
 			logger.info(`Scanning channel: ${channelId}`);
 			try {
 				const feed = await parser.parseURL(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`);
 
-				// Check last 3 videos
-				const videosToCheck = feed.items.slice(0, 3);
+				// Check last 2 videos per channel (reduced from 3 to limit request volume)
+				const videosToCheck = feed.items.slice(0, 2);
 
-				for (const video of videosToCheck) {
+				for (let vi = 0; vi < videosToCheck.length; vi++) {
+					if (botDetected) break;
+
+					const video = videosToCheck[vi];
 					const videoId = video.id.replace('yt:video:', '');
 					const r2Key = `${videoId}_v2.m4a`;
 
@@ -200,32 +220,57 @@ const prefetchHandler = async (event) => {
 						if (e.name === 'NotFound' || e.name === '404') {
 							logger.info(`Video ${videoId} missing. Downloading...`);
 
-							// Download
-							const tempPath = `/tmp/${videoId}.m4a`;
-							await runYtDlp(video.link, tempPath, fs.existsSync(cookiesPath) ? cookiesPath : null, runCtx);
+							try {
+								// Download
+								const tempPath = `/tmp/${videoId}.m4a`;
+								await runYtDlp(video.link, tempPath, fs.existsSync(cookiesPath) ? cookiesPath : null, runCtx);
 
-							// Upload
-							if (fs.existsSync(tempPath)) {
-								const fileStream = fs.createReadStream(tempPath);
-								const stats = fs.statSync(tempPath);
-								await s3.send(new PutObjectCommand({
-									Bucket: R2_BUCKET_NAME,
-									Key: r2Key,
-									Body: fileStream,
-									ContentType: 'audio/mp4',
-									ContentLength: stats.size
-								}));
-								logger.info(`Uploaded ${videoId} to R2.`);
+								// Upload
+								if (fs.existsSync(tempPath)) {
+									const fileStream = fs.createReadStream(tempPath);
+									const stats = fs.statSync(tempPath);
+									await s3.send(new PutObjectCommand({
+										Bucket: R2_BUCKET_NAME,
+										Key: r2Key,
+										Body: fileStream,
+										ContentType: 'audio/mp4',
+										ContentLength: stats.size
+									}));
+									logger.info(`Uploaded ${videoId} to R2.`);
 
-								// Record notification
-								newNotifications.push({
-									id: videoId,
-									title: video.title || 'Unknown Title',
-									channelInfo: feed.title || channelId,
-									timestamp: new Date().toISOString()
-								});
+									newNotifications.push({
+										id: videoId,
+										title: video.title || 'Unknown Title',
+										channelInfo: feed.title || channelId,
+										timestamp: new Date().toISOString()
+									});
 
-								fs.unlinkSync(tempPath); // Cleanup
+									fs.unlinkSync(tempPath); // Cleanup
+								}
+							} catch (downloadErr) {
+								logger.error(`Download failed for ${videoId}: ${downloadErr.message}`);
+
+								// Detect bot-check: abort entire run immediately
+								if (downloadErr.message.includes('Sign in to confirm') || downloadErr.message.includes('confirm you')) {
+									logger.warn('Bot-check detected during download! Aborting run to preserve cookies.');
+									botDetected = true;
+									newNotifications.push({
+										id: `bot-check-${Date.now()}`,
+										title: '⚠️ Cookie scaduti — Aggiorna i cookies',
+										channelInfo: 'Sistema',
+										timestamp: new Date().toISOString(),
+										type: 'error',
+										message: 'YouTube richiede il login: "Sign in to confirm you are not a bot". Ricaricare cookies freschi su R2.'
+									});
+									break;
+								}
+							}
+
+							// Fix A: Random delay between video downloads (10–45 seconds)
+							if (!botDetected && vi < videosToCheck.length - 1) {
+								const delaySec = Math.floor(Math.random() * 36) + 10;
+								logger.info(`Waiting ${delaySec}s before next video...`);
+								await sleep(delaySec * 1000, delaySec * 1000);
 							}
 						}
 					}
@@ -233,9 +278,10 @@ const prefetchHandler = async (event) => {
 
 			} catch (err) {
 				logger.error(`Error processing channel ${channelId}: ${err.message}`);
-				// Detect bot-check error and push in-app notification
-				if (err.message.includes('Sign in to confirm')) {
-					logger.info('Bot-check detected! Pushing cookie refresh notification.');
+				// Detect bot-check at the channel/RSS level too
+				if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you')) {
+					logger.warn('Bot-check detected at channel level! Aborting run to preserve cookies.');
+					botDetected = true;
 					newNotifications.push({
 						id: `bot-check-${Date.now()}`,
 						title: '⚠️ Cookie scaduti — Aggiorna i cookies',
@@ -246,6 +292,17 @@ const prefetchHandler = async (event) => {
 					});
 				}
 			}
+
+			// Fix B: Random delay between channels (30–90 seconds), skip after last channel
+			if (!botDetected && ci < channels.length - 1) {
+				const delaySec = Math.floor(Math.random() * 61) + 30;
+				logger.info(`Waiting ${delaySec}s before next channel...`);
+				await sleep(delaySec * 1000, delaySec * 1000);
+			}
+		}
+
+		if (botDetected) {
+			logger.warn('Run aborted due to bot detection. Cookies may need renewal.');
 		}
 
 		// 4. Flush Notifications to R2

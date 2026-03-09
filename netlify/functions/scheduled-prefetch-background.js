@@ -109,13 +109,14 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 		strategies.push({ useCookies: true, playerClient: 'ios' });
 		strategies.push({ useCookies: true, playerClient: 'android' });
 		strategies.push({ useCookies: true, playerClient: 'mweb' });
-	} else {
-		for (const client of PLAYER_CLIENTS) {
-			strategies.push({ useCookies: false, playerClient: client });
-		}
+	}
+	
+	// Fallback to cookie-less strategies if all authenticated ones fail or no cookies are present
+	for (const client of PLAYER_CLIENTS) {
+		strategies.push({ useCookies: false, playerClient: client });
 	}
 
-	const MAX_ATTEMPTS = 6;
+	const MAX_ATTEMPTS = 8;
 	const cappedStrategies = strategies.slice(0, MAX_ATTEMPTS);
 
 	for (let i = 0; i < cappedStrategies.length; i++) {
@@ -178,7 +179,11 @@ const prefetchHandler = async (event) => {
 			// Convert to Netscape
 			const netscapeCookies = cookieJson.map(c => {
 				const domain = c.domain.startsWith('.') ? c.domain : `.${c.domain}`;
-				return `${domain}\tTRUE\t${c.path}\t${c.secure ? 'TRUE' : 'FALSE'}\t${c.expirationDate || 0}\t${c.name}\t${c.value}`;
+				const includeSubdomains = 'TRUE';
+				const cookiePath = c.path;
+				const secure = c.secure ? 'TRUE' : 'FALSE';
+				const expiration = c.expirationDate ? Math.round(c.expirationDate) : 0;
+				return `${domain}\t${includeSubdomains}\t${cookiePath}\t${secure}\t${expiration}\t${c.name}\t${c.value}`;
 			}).join('\n');
 			fs.writeFileSync(cookiesPath, '# Netscape HTTP Cookie File\n' + netscapeCookies);
 

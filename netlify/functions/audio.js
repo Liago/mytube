@@ -263,14 +263,14 @@ exports.handler = async (event, context) => {
 				strategies.push({ useCookies: true, playerClient: 'ios' });
 				strategies.push({ useCookies: true, playerClient: 'android' });
 				strategies.push({ useCookies: true, playerClient: 'mweb' });
-			} else {
-				// No cookies available, just try clients in order
-				for (const client of PLAYER_CLIENTS) {
-					strategies.push({ useCookies: false, playerClient: client });
-				}
+			}
+			
+			// Always add cookie-less strategies as a fallback
+			for (const client of PLAYER_CLIENTS) {
+				strategies.push({ useCookies: false, playerClient: client });
 			}
 
-			const MAX_ATTEMPTS = 6;
+			const MAX_ATTEMPTS = 8;
 			const cappedStrategies = strategies.slice(0, MAX_ATTEMPTS);
 			console.log(`Will try up to ${cappedStrategies.length} strategies (of ${strategies.length} total) for ${videoId}`);
 

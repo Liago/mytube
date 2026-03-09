@@ -293,6 +293,9 @@ exports.handler = async (event, context) => {
 						console.log(`Proxy disabled globally for this video. Retrying same strategy without proxy...`);
 						i--; // Retry the same strategy without proxy
 						attemptCount--; // Revert the attempt counter so the log is consistent
+					} else if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you') || err.message.includes('Requested format is not available')) {
+						console.log(`Bot-check/shadowban detected. Aborting further strategies.`);
+						break; // Fail fast
 					}
 				}
 			}
@@ -374,9 +377,11 @@ exports.handler = async (event, context) => {
 			};
 		} catch (error) {
 			logger.error(`Error processing ${videoId}: ${error.message}`);
+			const isShadowban = error.message.includes('Sign in to confirm') || error.message.includes('confirm you') || error.message.includes('Requested format is not available');
+
 			return {
-				statusCode: 500,
-				body: JSON.stringify({ error: error.message }),
+				statusCode: isShadowban ? 403 : 500,
+				body: JSON.stringify({ error: isShadowban ? "YouTube bot-check/shadowban detected. Cookies expired or IP blocked." : error.message }),
 			};
 		}
 	} catch (globalError) {

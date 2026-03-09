@@ -73,7 +73,10 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 
 			const proxyUrl = (process.env.PROXY_URL || '').replace(/\s+/g, '');
 			if (proxyUrl && !ctx.skipProxy && proxyUrl.startsWith('http')) {
+				if (ctx.logger) ctx.logger.info(`Using Proxy: ${proxyUrl}`);
 				args.push('--proxy', proxyUrl);
+			} else if (proxyUrl && ctx.skipProxy) {
+				if (ctx.logger) ctx.logger.info('Proxy disabled for this request due to previous error.');
 			}
 
 			const processProc = spawn(binPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -133,6 +136,9 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 			if (err.message.includes('Proxy rate limit detected') || err.message.includes('Proxy error detected')) {
 				if (ctx.logger) ctx.logger.info(`Proxy disabled globally. Retrying same strategy without proxy...`);
 				i--; // Retry the same strategy without proxy
+			} else if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you') || err.message.includes('Requested format is not available')) {
+				if (ctx.logger) ctx.logger.warn(`Bot-check/shadowban detected. Aborting further strategies.`);
+				break; // Fail fast
 			}
 		}
 	}
@@ -256,8 +262,8 @@ const prefetchHandler = async (event) => {
 								logger.error(`Download failed for ${videoId}: ${downloadErr.message}`);
 
 								// Detect bot-check: abort entire run immediately
-								if (downloadErr.message.includes('Sign in to confirm') || downloadErr.message.includes('confirm you')) {
-									logger.warn('Bot-check detected during download! Aborting run to preserve cookies.');
+								if (downloadErr.message.includes('Sign in to confirm') || downloadErr.message.includes('confirm you') || downloadErr.message.includes('Requested format is not available')) {
+									logger.warn('Bot-check / Shadowban detected during download! Aborting run to preserve cookies.');
 									botDetected = true;
 									newNotifications.push({
 										id: `bot-check-${Date.now()}`,
@@ -265,7 +271,7 @@ const prefetchHandler = async (event) => {
 										channelInfo: 'Sistema',
 										timestamp: new Date().toISOString(),
 										type: 'error',
-										message: 'YouTube richiede il login: "Sign in to confirm you are not a bot". Ricaricare cookies freschi su R2.'
+										message: 'YouTube richiede il login o blocca i formati (Shadowban). Ricaricare cookies freschi su R2.'
 									});
 									break;
 								}
@@ -284,8 +290,8 @@ const prefetchHandler = async (event) => {
 			} catch (err) {
 				logger.error(`Error processing channel ${channelId}: ${err.message}`);
 				// Detect bot-check at the channel/RSS level too
-				if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you')) {
-					logger.warn('Bot-check detected at channel level! Aborting run to preserve cookies.');
+				if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you') || err.message.includes('Requested format is not available')) {
+					logger.warn('Bot-check / Shadowban detected at channel level! Aborting run to preserve cookies.');
 					botDetected = true;
 					newNotifications.push({
 						id: `bot-check-${Date.now()}`,
@@ -293,7 +299,7 @@ const prefetchHandler = async (event) => {
 						channelInfo: 'Sistema',
 						timestamp: new Date().toISOString(),
 						type: 'error',
-						message: 'YouTube richiede il login: "Sign in to confirm you are not a bot". Ricaricare cookies freschi su R2.'
+						message: 'YouTube richiede il login o blocca i formati (Shadowban). Ricaricare cookies freschi su R2.'
 					});
 				}
 			}

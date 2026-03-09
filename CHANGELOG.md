@@ -1,3 +1,9 @@
+## [1.22.4](https://github.com/Liago/mytube/compare/v1.22.3...v1.22.4) (2026-03-09)
+
+### Bug Fixes
+
+* **audio:** patch cookie expiration format and add unauthenticated fallback cascade for yt-dlp ([ab4f520](https://github.com/Liago/mytube/commit/ab4f5202000c461089bf94f4deb8fd16ada72e01))
+
 ## [1.22.3](https://github.com/Liago/mytube/compare/v1.22.2...v1.22.3) (2026-03-07)
 
 ### Bug Fixes

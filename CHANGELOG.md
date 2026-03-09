@@ -1,3 +1,9 @@
+## [1.22.6](https://github.com/Liago/mytube/compare/v1.22.5...v1.22.6) (2026-03-09)
+
+### Bug Fixes
+
+* **debug:** standardise netscape cookie format and update yt-dlp test parameters ([d47ae80](https://github.com/Liago/mytube/commit/d47ae80cae5cb1d7f5ce6a401002c08877fb7d50))
+
 ## [1.22.5](https://github.com/Liago/mytube/compare/v1.22.4...v1.22.5) (2026-03-09)
 
 ### Bug Fixes

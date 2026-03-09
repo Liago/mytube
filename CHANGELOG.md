@@ -1,3 +1,9 @@
+## [1.22.5](https://github.com/Liago/mytube/compare/v1.22.4...v1.22.5) (2026-03-09)
+
+### Bug Fixes
+
+* **yt:** catch shadowban explicitly as 'Requested format is not available' and fast-fail ([b062b2c](https://github.com/Liago/mytube/commit/b062b2c35b8b7277d32e4968ed3e66c9be0129a7))
+
 ## [1.22.4](https://github.com/Liago/mytube/compare/v1.22.3...v1.22.4) (2026-03-09)
 
 ### Bug Fixes

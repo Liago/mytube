@@ -1,3 +1,9 @@
+## [1.23.0](https://github.com/Liago/mytube/compare/v1.22.6...v1.23.0) (2026-03-11)
+
+### Features
+
+* adaptive bot-check mitigation for peak hours ([f520794](https://github.com/Liago/mytube/commit/f520794207c531a0c92edec52746a70c0ffb0642))
+
 ## [1.22.6](https://github.com/Liago/mytube/compare/v1.22.5...v1.22.6) (2026-03-09)
 
 ### Bug Fixes

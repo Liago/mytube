@@ -19,6 +19,23 @@ const sleep = (minMs, maxMs) => {
 	return new Promise(resolve => setTimeout(resolve, ms));
 };
 
+// Peak hour detection (14:00-22:00 CET/CEST)
+const isPeakHour = () => {
+	const now = new Date();
+	const cetHour = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Rome' })).getHours();
+	return cetHour >= 14 && cetHour < 22;
+};
+
+// Fisher-Yates shuffle
+const shuffleArray = (arr) => {
+	const copy = [...arr];
+	for (let i = copy.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[copy[i], copy[j]] = [copy[j], copy[i]];
+	}
+	return copy;
+};
+
 // Configuration
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
@@ -66,10 +83,13 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 			args.push('--extractor-args', `youtube:player_client=${playerClient}`);
 			args.push('--user-agent', CHROME_UA);
 			args.push('--compat-options', '2025');
-			// Fix E: Add intra-request delays so yt-dlp's own HTTP calls aren't bursty
-			args.push('--sleep-requests', '2');
-			args.push('--sleep-interval', '3');
-			args.push('--max-sleep-interval', '10');
+			// Adaptive intra-request delays: more conservative during peak hours
+			const sleepRequests = ctx.sleepRequests || '2';
+			const sleepInterval = ctx.sleepInterval || '3';
+			const maxSleepInterval = ctx.maxSleepInterval || '10';
+			args.push('--sleep-requests', sleepRequests);
+			args.push('--sleep-interval', sleepInterval);
+			args.push('--max-sleep-interval', maxSleepInterval);
 
 			const proxyUrl = (process.env.PROXY_URL || '').replace(/\s+/g, '');
 			if (proxyUrl && !ctx.skipProxy && proxyUrl.startsWith('http')) {
@@ -200,21 +220,39 @@ const prefetchHandler = async (event) => {
 
 		// 3. Scan & Download
 		const newNotifications = [];
-		const runCtx = { skipProxy: false, logger };
+		const peak = isPeakHour();
+		logger.info(`Time profile: ${peak ? 'PEAK hours (14-22 CET) — conservative mode' : 'Off-peak hours — normal mode'}`);
+
+		const runCtx = {
+			skipProxy: false,
+			logger,
+			sleepRequests: peak ? '4' : '2',
+			sleepInterval: peak ? '5' : '3',
+			maxSleepInterval: peak ? '15' : '10',
+		};
+
+		const VIDEO_DELAY = peak ? [30, 90] : [10, 45];
+		const CHANNEL_DELAY = peak ? [60, 180] : [30, 90];
+		const VIDEOS_PER_CHANNEL = peak ? 1 : 2;
 
 		// Track bot detection across the entire run — abort everything if triggered
 		let botDetected = false;
+		let consecutiveBotChecks = 0;
+		const MAX_BOT_RETRIES = 1; // Allow 1 retry with backoff before aborting
 
-		for (let ci = 0; ci < channels.length; ci++) {
+		// Shuffle channels to avoid predictable patterns
+		const shuffledChannels = shuffleArray(channels);
+
+		for (let ci = 0; ci < shuffledChannels.length; ci++) {
 			if (botDetected) break;
 
-			const channelId = channels[ci];
+			const channelId = shuffledChannels[ci];
 			logger.info(`Scanning channel: ${channelId}`);
 			try {
 				const feed = await parser.parseURL(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`);
 
-				// Check last 2 videos per channel (reduced from 3 to limit request volume)
-				const videosToCheck = feed.items.slice(0, 2);
+				// Adaptive: fewer videos per channel during peak hours
+				const videosToCheck = feed.items.slice(0, VIDEOS_PER_CHANNEL);
 
 				for (let vi = 0; vi < videosToCheck.length; vi++) {
 					if (botDetected) break;
@@ -261,25 +299,66 @@ const prefetchHandler = async (event) => {
 							} catch (downloadErr) {
 								logger.error(`Download failed for ${videoId}: ${downloadErr.message}`);
 
-								// Detect bot-check: abort entire run immediately
+								// Detect bot-check: retry with backoff, then abort if persistent
 								if (downloadErr.message.includes('Sign in to confirm') || downloadErr.message.includes('confirm you') || downloadErr.message.includes('Requested format is not available')) {
-									logger.warn('Bot-check / Shadowban detected during download! Aborting run to preserve cookies.');
-									botDetected = true;
-									newNotifications.push({
-										id: `bot-check-${Date.now()}`,
-										title: '⚠️ Cookie scaduti — Aggiorna i cookies',
-										channelInfo: 'Sistema',
-										timestamp: new Date().toISOString(),
-										type: 'error',
-										message: 'YouTube richiede il login o blocca i formati (Shadowban). Ricaricare cookies freschi su R2.'
-									});
-									break;
+									consecutiveBotChecks++;
+
+									if (consecutiveBotChecks <= MAX_BOT_RETRIES) {
+										// First bot-check: wait and retry this video
+										const backoffSec = Math.floor(Math.random() * 61) + 60; // 60-120s
+										logger.warn(`Bot-check detected (attempt ${consecutiveBotChecks}/${MAX_BOT_RETRIES + 1}). Backing off ${backoffSec}s before retry...`);
+										await sleep(backoffSec * 1000, backoffSec * 1000);
+
+										try {
+											logger.info(`Retrying ${videoId} after backoff...`);
+											await runYtDlp(video.link, tempPath, fs.existsSync(cookiesPath) ? cookiesPath : null, runCtx);
+
+											// Retry succeeded!
+											if (fs.existsSync(tempPath)) {
+												const fileStream = fs.createReadStream(tempPath);
+												const stats = fs.statSync(tempPath);
+												await s3.send(new PutObjectCommand({
+													Bucket: R2_BUCKET_NAME,
+													Key: r2Key,
+													Body: fileStream,
+													ContentType: 'audio/mp4',
+													ContentLength: stats.size
+												}));
+												logger.info(`Uploaded ${videoId} to R2 (after retry).`);
+												newNotifications.push({
+													id: videoId,
+													title: video.title || 'Unknown Title',
+													channelInfo: feed.title || channelId,
+													timestamp: new Date().toISOString()
+												});
+												fs.unlinkSync(tempPath);
+											}
+											consecutiveBotChecks = 0; // Reset on success
+										} catch (retryErr) {
+											logger.warn(`Retry also failed: ${retryErr.message}`);
+											consecutiveBotChecks++;
+										}
+									}
+
+									if (consecutiveBotChecks > MAX_BOT_RETRIES) {
+										logger.warn('Bot-check persistent after retry. Aborting run to preserve cookies.');
+										botDetected = true;
+										newNotifications.push({
+											id: `bot-check-${Date.now()}`,
+											title: '⚠️ Bot-check persistente — Cookies da verificare',
+											channelInfo: 'Sistema',
+											timestamp: new Date().toISOString(),
+											type: 'error',
+											message: 'YouTube bot-check persistente dopo retry con backoff. Verificare cookies o attendere ore notturne.'
+										});
+										break;
+									}
 								}
 							}
 
-							// Fix A: Random delay between video downloads (10–45 seconds)
+							// Adaptive delay between video downloads
 							if (!botDetected && vi < videosToCheck.length - 1) {
-								const delaySec = Math.floor(Math.random() * 36) + 10;
+								const delaySec = Math.floor(Math.random() * (VIDEO_DELAY[1] - VIDEO_DELAY[0] + 1)) + VIDEO_DELAY[0];
 								logger.info(`Waiting ${delaySec}s before next video...`);
 								await sleep(delaySec * 1000, delaySec * 1000);
 							}
@@ -304,9 +383,9 @@ const prefetchHandler = async (event) => {
 				}
 			}
 
-			// Fix B: Random delay between channels (30–90 seconds), skip after last channel
-			if (!botDetected && ci < channels.length - 1) {
-				const delaySec = Math.floor(Math.random() * 61) + 30;
+			// Adaptive delay between channels
+			if (!botDetected && ci < shuffledChannels.length - 1) {
+				const delaySec = Math.floor(Math.random() * (CHANNEL_DELAY[1] - CHANNEL_DELAY[0] + 1)) + CHANNEL_DELAY[0];
 				logger.info(`Waiting ${delaySec}s before next channel...`);
 				await sleep(delaySec * 1000, delaySec * 1000);
 			}

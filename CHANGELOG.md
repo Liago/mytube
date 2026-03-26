@@ -1,3 +1,9 @@
+## [1.23.1](https://github.com/Liago/mytube/compare/v1.23.0...v1.23.1) (2026-03-26)
+
+### Bug Fixes
+
+* skip live events, premieres, and unavailable videos immediately ([740e634](https://github.com/Liago/mytube/commit/740e6340cccf1a1ae6ee85b35866997d49997b12))
+
 ## [1.23.0](https://github.com/Liago/mytube/compare/v1.22.6...v1.23.0) (2026-03-11)
 
 ### Features

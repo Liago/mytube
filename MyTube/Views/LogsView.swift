@@ -276,6 +276,7 @@ struct LogDetailView: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var selectedLevel: String = "ALL"
+    @State private var selectedEntry: LogEntry?
 
     private let darkBg = Color(red: 0.10, green: 0.10, blue: 0.18)
     private let darkRowEven = Color(red: 0.12, green: 0.12, blue: 0.20)
@@ -331,6 +332,9 @@ struct LogDetailView: View {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(filteredEntries.enumerated()), id: \.offset) { index, item in
                                 logRow(entry: item.entry, index: index, runIndex: item.runIndex)
+                                    .onTapGesture {
+                                        selectedEntry = item.entry
+                                    }
                             }
                         }
                     }
@@ -343,6 +347,9 @@ struct LogDetailView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(Color(red: 0.10, green: 0.10, blue: 0.18), for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .sheet(item: $selectedEntry) { entry in
+            LogEntryDetailSheet(entry: entry)
+        }
         .task {
             do {
                 aggregated = try await viewModel.fetchDailyLogs(date: date, functionName: functionName)
@@ -542,6 +549,75 @@ struct LogDetailView: View {
         } else {
             let seconds = Double(ms) / 1000.0
             return String(format: "%.1fs", seconds)
+        }
+    }
+}
+
+// MARK: - Log Entry Detail Sheet
+
+struct LogEntryDetailSheet: View {
+    let entry: LogEntry
+    @Environment(\.dismiss) private var dismiss
+
+    private let darkBg = Color(red: 0.10, green: 0.10, blue: 0.18)
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Level + Timestamp
+                    HStack(spacing: 12) {
+                        Text(entry.level)
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundColor(badgeTextColor(entry.level))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(badgeColor(entry.level))
+                            .cornerRadius(4)
+
+                        Text(entry.timestamp)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(Color(white: 0.5))
+                    }
+
+                    // Full message
+                    Text(entry.message)
+                        .font(.system(size: 14, design: .monospaced))
+                        .foregroundColor(Color(white: 0.9))
+                        .textSelection(.enabled)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(darkBg)
+            .navigationTitle("Log Detail")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(Color(red: 0.08, green: 0.08, blue: 0.14), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func badgeColor(_ level: String) -> Color {
+        switch level {
+        case "INFO": return Color(red: 0.15, green: 0.40, blue: 0.25)
+        case "WARN": return Color(red: 0.55, green: 0.45, blue: 0.10)
+        case "ERROR": return Color(red: 0.60, green: 0.15, blue: 0.15)
+        default: return .gray
+        }
+    }
+
+    private func badgeTextColor(_ level: String) -> Color {
+        switch level {
+        case "INFO": return Color(red: 0.4, green: 0.9, blue: 0.5)
+        case "WARN": return Color(red: 1.0, green: 0.85, blue: 0.3)
+        case "ERROR": return Color(red: 1.0, green: 0.4, blue: 0.4)
+        default: return .white
         }
     }
 }

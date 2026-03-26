@@ -296,6 +296,9 @@ exports.handler = async (event, context) => {
 					} else if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you') || err.message.includes('Requested format is not available')) {
 						console.log(`Bot-check/shadowban detected. Aborting further strategies.`);
 						break; // Fail fast
+					} else if (err.message.includes('live event will begin') || err.message.includes('Premieres in') || err.message.includes('This video is not available') || err.message.includes('Video unavailable') || err.message.includes('is not a valid URL') || err.message.includes('Private video')) {
+						console.log(`Video not downloadable (live/premiere/unavailable). Skipping.`);
+						break; // No point retrying with different clients
 					}
 				}
 			}

@@ -159,6 +159,10 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 			} else if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you') || err.message.includes('Requested format is not available')) {
 				if (ctx.logger) ctx.logger.warn(`Bot-check/shadowban detected. Aborting further strategies.`);
 				break; // Fail fast
+			} else if (err.message.includes('live event will begin') || err.message.includes('Premieres in') || err.message.includes('This video is not available') || err.message.includes('Video unavailable') || err.message.includes('is not a valid URL') || err.message.includes('Private video')) {
+				if (ctx.logger) ctx.logger.warn(`Video not downloadable (live/premiere/unavailable). Skipping.`);
+				downloadError = new Error(`SKIP: ${err.message}`);
+				break; // No point retrying with different clients
 			}
 		}
 	}
@@ -297,6 +301,10 @@ const prefetchHandler = async (event) => {
 									fs.unlinkSync(tempPath); // Cleanup
 								}
 							} catch (downloadErr) {
+								// Non-downloadable videos (live, premiere, unavailable) — skip to next video
+								if (downloadErr.message.startsWith("SKIP:")) {
+									logger.warn(`Skipping video ${videoId}: ${downloadErr.message}`);
+								} else {
 								logger.error(`Download failed for ${videoId}: ${downloadErr.message}`);
 
 								// Detect bot-check: retry with backoff, then abort if persistent
@@ -354,6 +362,7 @@ const prefetchHandler = async (event) => {
 										break;
 									}
 								}
+								} // end else (non-SKIP errors)
 							}
 
 							// Adaptive delay between video downloads

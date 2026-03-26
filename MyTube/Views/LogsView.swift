@@ -293,7 +293,7 @@ struct LogDetailView: View {
                 result.append((entry, runIdx))
             }
         }
-        return result
+        return result.reversed()
     }
 
     var filteredEntries: [(entry: LogEntry, runIndex: Int)] {
@@ -453,7 +453,7 @@ struct LogDetailView: View {
         HStack(alignment: .top, spacing: 8) {
             // Severity badge
             Text(entry.level)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .foregroundColor(badgeTextColor(entry.level))
                 .frame(width: 42)
                 .padding(.vertical, 2)
@@ -462,13 +462,13 @@ struct LogDetailView: View {
 
             // Timestamp
             Text(formatLogTimestamp(entry.timestamp))
-                .font(.system(size: 11, design: .monospaced))
+                .font(.system(size: 13, design: .monospaced))
                 .foregroundColor(Color(white: 0.5))
-                .frame(width: 72, alignment: .leading)
+                .frame(width: 78, alignment: .leading)
 
             // Message
             Text(entry.message)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.system(size: 14, design: .monospaced))
                 .foregroundColor(messageColor(entry.level))
                 .lineLimit(3)
 

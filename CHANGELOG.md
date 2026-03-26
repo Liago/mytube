@@ -1,3 +1,9 @@
+## [1.24.1](https://github.com/Liago/mytube/compare/v1.24.0...v1.24.1) (2026-03-26)
+
+### Bug Fixes
+
+* **logs:** add visible loading spinner with label during log fetch ([ca2989d](https://github.com/Liago/mytube/commit/ca2989d73b8a41f4716cbf58c187a28160712000))
+
 ## [1.24.0](https://github.com/Liago/mytube/compare/v1.23.2...v1.24.0) (2026-03-26)
 
 ### Features

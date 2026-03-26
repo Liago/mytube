@@ -1,3 +1,9 @@
+## [1.23.2](https://github.com/Liago/mytube/compare/v1.23.1...v1.23.2) (2026-03-26)
+
+### Bug Fixes
+
+* **logs:** reverse log order to show newest first and increase font size ([1662f6d](https://github.com/Liago/mytube/commit/1662f6d8cb8e35f588175e2eff079b878b8d64e0))
+
 ## [1.23.1](https://github.com/Liago/mytube/compare/v1.23.0...v1.23.1) (2026-03-26)
 
 ### Bug Fixes

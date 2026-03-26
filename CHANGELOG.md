@@ -1,3 +1,9 @@
+## [1.24.0](https://github.com/Liago/mytube/compare/v1.23.2...v1.24.0) (2026-03-26)
+
+### Features
+
+* **logs:** add tap-to-expand detail sheet for truncated log entries ([7082869](https://github.com/Liago/mytube/commit/7082869d577e083baaa0092904aff4178bc661f2))
+
 ## [1.23.2](https://github.com/Liago/mytube/compare/v1.23.1...v1.23.2) (2026-03-26)
 
 ### Bug Fixes

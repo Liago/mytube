@@ -305,9 +305,16 @@ struct LogDetailView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(darkBg)
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .blue))
+                        .scaleEffect(1.3)
+                    Text("Loading logs...")
+                        .font(.system(size: 14, design: .monospaced))
+                        .foregroundColor(.gray)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(darkBg)
             } else if let error = error {
                 VStack {
                     Image(systemName: "exclamationmark.triangle")

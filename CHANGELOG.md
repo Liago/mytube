@@ -1,3 +1,9 @@
+## [1.25.0](https://github.com/Liago/mytube/compare/v1.24.1...v1.25.0) (2026-03-27)
+
+### Features
+
+* implement cached episodes playlist UI and backend logic ([9622fab](https://github.com/Liago/mytube/commit/9622fab98d92254c191221bfbc6eec427e87355d))
+
 ## [1.24.1](https://github.com/Liago/mytube/compare/v1.24.0...v1.24.1) (2026-03-26)
 
 ### Bug Fixes

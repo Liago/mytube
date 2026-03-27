@@ -12,6 +12,11 @@ struct MainTabView: View {
                 .tabItem {
                     Label("Subscriptions", systemImage: "person.2.fill")
                 }
+                
+            CachedPlaylistView()
+                .tabItem {
+                    Label("Playlist", systemImage: "play.square.stack")
+                }
             
             LogsView()
                 .tabItem {

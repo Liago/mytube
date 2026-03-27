@@ -96,4 +96,33 @@ class CacheStatusService: ObservableObject {
     func isCached(_ videoId: String) -> Bool {
         return cachedVideoIds.contains(videoId)
     }
+    
+    /// Fetches all cached IDs from the backend
+    func fetchAllCachedIds() async throws -> [String] {
+        #if targetEnvironment(simulator)
+        let baseURL = "http://localhost:8888"
+        #else
+        let baseURL = "https://mytube-be.netlify.app"
+        #endif
+        
+        let url = URL(string: "\(baseURL)/.netlify/functions/check-cache")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(Secrets.apiSecret, forHTTPHeaderField: "x-api-key")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["ids": []]) // Empty ids triggers fetch all
+        
+        let (data, _) = try await URLSession.shared.data(for: request)
+        
+        struct CacheResponse: Decodable {
+            let found: [String]
+        }
+        
+        let result = try JSONDecoder().decode(CacheResponse.self, from: data)
+        
+        // Update local cache state just in case
+        result.found.forEach { self.cachedVideoIds.insert($0) }
+        
+        return result.found
+    }
 }

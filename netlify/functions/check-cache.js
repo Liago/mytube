@@ -1,4 +1,4 @@
-const { S3Client, HeadObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, HeadObjectCommand, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
@@ -40,7 +40,27 @@ exports.handler = async (event, context) => {
 	}
 
 	if (!videoIds.length) {
-		return { statusCode: 400, body: JSON.stringify({ error: "No video IDs provided" }) };
+		// Return all cached IDs if none provided
+		try {
+			const data = await s3.send(new ListObjectsV2Command({ Bucket: R2_BUCKET_NAME }));
+			const objects = data.Contents || [];
+			const found = objects
+				.filter(c => c.Key && c.Key.endsWith('_v2.m4a'))
+				.map(c => c.Key.replace('_v2.m4a', ''));
+				
+			return {
+				statusCode: 200,
+				headers: {
+					"Content-Type": "application/json",
+					"Access-Control-Allow-Origin": "*",
+					"Access-Control-Allow-Headers": "Content-Type",
+					"Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+				},
+				body: JSON.stringify({ found, missing: [] }),
+			};
+		} catch (error) {
+			return { statusCode: 500, body: JSON.stringify({ error: "Failed to list objects: " + error.message }) };
+		}
 	}
 
 	// Limit batch size

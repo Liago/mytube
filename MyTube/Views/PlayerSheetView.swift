@@ -13,6 +13,9 @@ struct PlayerSheetView: View {
     @State private var isDraggingSlider: Bool = false
     @State private var draggedProgress: Double = 0.0
     
+    // For playlist sheet
+    @State private var showPlaylist: Bool = false
+    
     // Formatting for date
     private var dateString: String {
         guard let isoDate = playerService.currentVideoDate,
@@ -293,7 +296,9 @@ struct PlayerSheetView: View {
                     Image(systemName: "airplayaudio")
                         .foregroundColor(.white.opacity(0.6))
                 }
-                Button(action: {}) {
+                Button(action: {
+                    showPlaylist = true
+                }) {
                     Image(systemName: "list.bullet")
                         .foregroundColor(.white.opacity(0.6))
                 }
@@ -321,6 +326,9 @@ struct PlayerSheetView: View {
             }
     )
     .animation(.spring(), value: dragOffset)
+    .sheet(isPresented: $showPlaylist) {
+        CachedPlaylistView(isPresentedAsSheet: true)
+    }
     }
 
     func formatTime(_ seconds: Double) -> String {

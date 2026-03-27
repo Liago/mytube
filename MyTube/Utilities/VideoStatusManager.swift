@@ -84,11 +84,7 @@ class VideoStatusManager: ObservableObject {
     
     private func performSync() async {
         do {
-            #if targetEnvironment(simulator)
-            let baseURL = "http://localhost:8888"
-            #else
             let baseURL = "https://mytube-be.netlify.app"
-            #endif
             
             let url = URL(string: "\(baseURL)/.netlify/functions/sync-history")!
             var request = URLRequest(url: url)
@@ -259,11 +255,7 @@ class VideoStatusManager: ObservableObject {
     func syncPreferences() {
         Task {
             do {
-                #if targetEnvironment(simulator)
-                let baseURL = "http://localhost:8888"
-                #else
                 let baseURL = "https://mytube-be.netlify.app"
-                #endif
                 
                 let url = URL(string: "\(baseURL)/.netlify/functions/sync-preferences")!
                 var request = URLRequest(url: url)

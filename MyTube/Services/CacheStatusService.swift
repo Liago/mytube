@@ -56,11 +56,7 @@ class CacheStatusService: ObservableObject {
         idsToCheck.forEach { pendingCheckIds.remove($0) }
         
         do {
-            #if targetEnvironment(simulator)
-            let baseURL = "http://localhost:8888"
-            #else
             let baseURL = "https://mytube-be.netlify.app"
-            #endif
             
             let url = URL(string: "\(baseURL)/.netlify/functions/check-cache")!
             var request = URLRequest(url: url)
@@ -99,11 +95,7 @@ class CacheStatusService: ObservableObject {
     
     /// Fetches all cached IDs from the backend
     func fetchAllCachedIds() async throws -> [String] {
-        #if targetEnvironment(simulator)
-        let baseURL = "http://localhost:8888"
-        #else
         let baseURL = "https://mytube-be.netlify.app"
-        #endif
         
         let url = URL(string: "\(baseURL)/.netlify/functions/check-cache")!
         var request = URLRequest(url: url)

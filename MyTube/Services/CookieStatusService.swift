@@ -54,11 +54,7 @@ class CookieStatusService: ObservableObject {
         errorMessage = nil
         
         do {
-            #if targetEnvironment(simulator)
-            let baseURL = "http://localhost:8888"
-            #else
             let baseURL = "https://mytube-be.netlify.app"
-            #endif
             
             let url = URL(string: "\(baseURL)/.netlify/functions/cookie-status")!
             var request = URLRequest(url: url)

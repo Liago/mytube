@@ -1,3 +1,9 @@
+## [1.25.1](https://github.com/Liago/mytube/compare/v1.25.0...v1.25.1) (2026-03-27)
+
+### Bug Fixes
+
+* make YouTube video description optional and handle backend errors gracefully ([fd8c22b](https://github.com/Liago/mytube/commit/fd8c22b3d26594588242485ccf75aa9611b9a3ec))
+
 ## [1.25.0](https://github.com/Liago/mytube/compare/v1.24.1...v1.25.0) (2026-03-27)
 
 ### Features

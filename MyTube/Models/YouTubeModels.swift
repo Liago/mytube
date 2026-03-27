@@ -7,7 +7,7 @@ struct YouTubeResponse<T: Codable>: Codable {
 
 struct Snippet: Codable {
     let title: String
-    let description: String
+    let description: String?
     let thumbnails: Thumbnails?
     let resourceId: ResourceId?
     let channelId: String?

@@ -104,7 +104,12 @@ class CacheStatusService: ObservableObject {
         request.setValue(Secrets.apiSecret, forHTTPHeaderField: "x-api-key")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["ids": []]) // Empty ids triggers fetch all
         
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            print("CacheStatusService: Error. Server returned \(String(data: data, encoding: .utf8) ?? "nil")")
+            throw URLError(.badServerResponse)
+        }
         
         struct CacheResponse: Decodable {
             let found: [String]

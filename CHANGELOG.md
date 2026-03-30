@@ -1,3 +1,9 @@
+## [1.26.0](https://github.com/Liago/mytube/compare/v1.25.1...v1.26.0) (2026-03-30)
+
+### Features
+
+* add individual episode prefetch queue ([64ab278](https://github.com/Liago/mytube/commit/64ab278550a9da01a97a4190c5b6d7b882bd93eb))
+
 ## [1.25.1](https://github.com/Liago/mytube/compare/v1.25.0...v1.25.1) (2026-03-27)
 
 ### Bug Fixes

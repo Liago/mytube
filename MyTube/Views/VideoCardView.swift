@@ -12,7 +12,8 @@ struct VideoCardView: View {
     let onChannelTap: (String) -> Void // Added
     
     @ObservedObject private var cacheService = CacheStatusService.shared
-    
+    @ObservedObject private var prefetchService = PrefetchQueueService.shared
+
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
@@ -33,10 +34,10 @@ struct VideoCardView: View {
                 }
                 .frame(height: 220)
                 .clipped()
-                
+
                 // Content
                 VStack(alignment: .leading, spacing: 12) {
-                    // Title and Rating/More Icon
+                    // Title and Menu
                     HStack(alignment: .top) {
                         Text(title)
                             .font(.title3)
@@ -44,18 +45,43 @@ struct VideoCardView: View {
                             .foregroundColor(.primary)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
-                        
+
                         Spacer()
-                        
-                        // Placeholder for "Top rated" or similar badge/menu from design
-                        // For now using a generic menu icon or similar visual
-                        Image(systemName: "ellipsis")
-                            .foregroundColor(.primary)
-                            .padding(8)
-                            .background(Color.gray.opacity(0.1))
-                            .clipShape(Circle())
+
+                        Menu {
+                            if !cacheService.isCached(videoId) && !prefetchService.isQueued(videoId) {
+                                Button {
+                                    Task {
+                                        await prefetchService.addToQueue(item: PrefetchQueueItem(
+                                            videoId: videoId,
+                                            title: title,
+                                            channelName: channelName,
+                                            channelId: channelId,
+                                            thumbnailURL: thumbnailURL?.absoluteString,
+                                            addedAt: ISO8601DateFormatter().string(from: Date())
+                                        ))
+                                    }
+                                } label: {
+                                    Label("Aggiungi alla coda", systemImage: "arrow.down.circle")
+                                }
+                            } else if prefetchService.isQueued(videoId) {
+                                Button(role: .destructive) {
+                                    Task {
+                                        await prefetchService.removeFromQueue(videoId: videoId)
+                                    }
+                                } label: {
+                                    Label("Rimuovi dalla coda", systemImage: "minus.circle")
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .foregroundColor(.primary)
+                                .padding(8)
+                                .background(Color.gray.opacity(0.1))
+                                .clipShape(Circle())
+                        }
                     }
-                    
+
                     // Metadata line
                     HStack {
                         if let date = date {
@@ -65,9 +91,10 @@ struct VideoCardView: View {
                             Text("•")
                             Text(duration)
                         }
-                        
+
+                        Spacer()
+
                         if cacheService.isCached(videoId) {
-                            Spacer()
                             HStack(spacing: 4) {
                                 Image(systemName: "checkmark.icloud.fill")
                                 Text("Cached")
@@ -79,12 +106,25 @@ struct VideoCardView: View {
                             .padding(.vertical, 4)
                             .background(Color.green.opacity(0.1))
                             .cornerRadius(8)
+                        } else if prefetchService.isQueued(videoId) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "clock.arrow.circlepath")
+                                Text("In coda")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                            }
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange.opacity(0.1))
+                            .cornerRadius(8)
                         }
                     }
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .task {
                         cacheService.checkStatus(for: videoId)
+                        await prefetchService.fetchQueueIfNeeded()
                     }
                     
                     // Description/Extra info placeholder (mimicking the "Lost city..." text)

@@ -42,6 +42,7 @@ const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "mytube-audio";
 const PREFS_FILE_KEY = "system/home_channels.json";
+const QUEUE_FILE_KEY = "system/prefetch_queue.json";
 
 const s3 = new S3Client({
 	region: "auto",
@@ -244,6 +245,159 @@ const prefetchHandler = async (event) => {
 		let consecutiveBotChecks = 0;
 		const MAX_BOT_RETRIES = 1; // Allow 1 retry with backoff before aborting
 
+		// 3a. Process Prefetch Queue (user-requested episodes, higher priority than channel scan)
+		let queueItems = [];
+		try {
+			const queueData = await s3.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: QUEUE_FILE_KEY }));
+			const queueBody = await queueData.Body.transformToString();
+			const queue = JSON.parse(queueBody);
+			queueItems = queue.items || [];
+		} catch (e) {
+			if (e.name === 'NoSuchKey' || e.name === 'NotFound') {
+				logger.info("No prefetch queue found. Skipping queue phase.");
+			} else {
+				logger.warn(`Error reading prefetch queue: ${e.message}`);
+			}
+		}
+
+		if (queueItems.length > 0) {
+			logger.info(`Processing prefetch queue: ${queueItems.length} items`);
+			const processedIds = new Set();
+
+			for (let qi = 0; qi < queueItems.length; qi++) {
+				if (botDetected) break;
+
+				const queueItem = queueItems[qi];
+				const videoId = queueItem.videoId;
+				const r2Key = `${videoId}_v2.m4a`;
+
+				// Check if already cached
+				try {
+					await s3.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: r2Key }));
+					logger.info(`Queue item ${videoId} already cached. Removing from queue.`);
+					processedIds.add(videoId);
+				} catch (e) {
+					if (e.name === 'NotFound' || e.name === '404') {
+						logger.info(`Queue item ${videoId} not cached. Downloading...`);
+
+						try {
+							const tempPath = `/tmp/${videoId}.m4a`;
+							const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+							await runYtDlp(videoUrl, tempPath, fs.existsSync(cookiesPath) ? cookiesPath : null, runCtx);
+
+							if (fs.existsSync(tempPath)) {
+								const fileStream = fs.createReadStream(tempPath);
+								const stats = fs.statSync(tempPath);
+								await s3.send(new PutObjectCommand({
+									Bucket: R2_BUCKET_NAME,
+									Key: r2Key,
+									Body: fileStream,
+									ContentType: 'audio/mp4',
+									ContentLength: stats.size
+								}));
+								logger.info(`Uploaded queue item ${videoId} to R2.`);
+
+								newNotifications.push({
+									id: videoId,
+									title: queueItem.title || 'Unknown Title',
+									channelInfo: queueItem.channelName || 'Prefetch Queue',
+									timestamp: new Date().toISOString()
+								});
+
+								fs.unlinkSync(tempPath);
+							}
+							processedIds.add(videoId);
+						} catch (downloadErr) {
+							if (downloadErr.message.startsWith("SKIP:")) {
+								logger.warn(`Skipping queue item ${videoId}: ${downloadErr.message}`);
+								processedIds.add(videoId); // Remove non-downloadable items from queue
+							} else {
+								logger.error(`Download failed for queue item ${videoId}: ${downloadErr.message}`);
+
+								if (downloadErr.message.includes('Sign in to confirm') || downloadErr.message.includes('confirm you') || downloadErr.message.includes('Requested format is not available')) {
+									consecutiveBotChecks++;
+
+									if (consecutiveBotChecks <= MAX_BOT_RETRIES) {
+										const backoffSec = Math.floor(Math.random() * 61) + 60;
+										logger.warn(`Bot-check detected during queue processing (attempt ${consecutiveBotChecks}/${MAX_BOT_RETRIES + 1}). Backing off ${backoffSec}s...`);
+										await sleep(backoffSec * 1000, backoffSec * 1000);
+
+										try {
+											logger.info(`Retrying queue item ${videoId} after backoff...`);
+											const tempPath = `/tmp/${videoId}.m4a`;
+											const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+											await runYtDlp(videoUrl, tempPath, fs.existsSync(cookiesPath) ? cookiesPath : null, runCtx);
+
+											if (fs.existsSync(tempPath)) {
+												const fileStream = fs.createReadStream(tempPath);
+												const stats = fs.statSync(tempPath);
+												await s3.send(new PutObjectCommand({
+													Bucket: R2_BUCKET_NAME,
+													Key: r2Key,
+													Body: fileStream,
+													ContentType: 'audio/mp4',
+													ContentLength: stats.size
+												}));
+												logger.info(`Uploaded queue item ${videoId} to R2 (after retry).`);
+												newNotifications.push({
+													id: videoId,
+													title: queueItem.title || 'Unknown Title',
+													channelInfo: queueItem.channelName || 'Prefetch Queue',
+													timestamp: new Date().toISOString()
+												});
+												fs.unlinkSync(tempPath);
+											}
+											processedIds.add(videoId);
+											consecutiveBotChecks = 0;
+										} catch (retryErr) {
+											logger.warn(`Queue retry also failed: ${retryErr.message}`);
+											consecutiveBotChecks++;
+										}
+									}
+
+									if (consecutiveBotChecks > MAX_BOT_RETRIES) {
+										logger.warn('Bot-check persistent during queue processing. Aborting run.');
+										botDetected = true;
+										newNotifications.push({
+											id: `bot-check-${Date.now()}`,
+											title: '⚠️ Bot-check persistente — Cookies da verificare',
+											channelInfo: 'Sistema',
+											timestamp: new Date().toISOString(),
+											type: 'error',
+											message: 'YouTube bot-check persistente durante processing coda prefetch. Verificare cookies.'
+										});
+										break;
+									}
+								}
+							}
+						}
+
+						// Delay between queue downloads
+						if (!botDetected && qi < queueItems.length - 1) {
+							const delaySec = Math.floor(Math.random() * (VIDEO_DELAY[1] - VIDEO_DELAY[0] + 1)) + VIDEO_DELAY[0];
+							logger.info(`Waiting ${delaySec}s before next queue item...`);
+							await sleep(delaySec * 1000, delaySec * 1000);
+						}
+					}
+				}
+			}
+
+			// Update queue on R2: remove processed items
+			const remainingItems = queueItems.filter(item => !processedIds.has(item.videoId));
+			try {
+				await s3.send(new PutObjectCommand({
+					Bucket: R2_BUCKET_NAME,
+					Key: QUEUE_FILE_KEY,
+					Body: JSON.stringify({ items: remainingItems, lastUpdated: new Date().toISOString() }),
+					ContentType: 'application/json'
+				}));
+				logger.info(`Queue processed: ${processedIds.size} downloaded/removed, ${remainingItems.length} remaining.`);
+			} catch (e) {
+				logger.error(`Failed to update prefetch queue on R2: ${e.message}`);
+			}
+		}
+
+		// 3b. Channel RSS Scan
 		// Shuffle channels to avoid predictable patterns
 		const shuffledChannels = shuffleArray(channels);
 

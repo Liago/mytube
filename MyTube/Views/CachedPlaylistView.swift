@@ -1,13 +1,21 @@
 import SwiftUI
 import Combine
 
+enum PlaylistTab: String, CaseIterable {
+    case cached = "Cached"
+    case queue = "Coda"
+}
+
 struct CachedPlaylistView: View {
     @StateObject private var viewModel = CachedPlaylistViewModel()
+    @ObservedObject private var prefetchService = PrefetchQueueService.shared
     @Environment(\.presentationMode) var presentationMode
-    
+
     // Optional parameter to differentiate if presented from tab or player
     var isPresentedAsSheet: Bool = false
-    
+
+    @State private var selectedTab: PlaylistTab = .cached
+
     var body: some View {
         Group {
             if isPresentedAsSheet {
@@ -31,12 +39,43 @@ struct CachedPlaylistView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     private var mainContent: some View {
+        VStack(spacing: 0) {
+            if !isPresentedAsSheet {
+                Picker("View", selection: $selectedTab) {
+                    ForEach(PlaylistTab.allCases, id: \.self) { tab in
+                        if tab == .queue {
+                            Text("\(tab.rawValue) (\(prefetchService.queueItems.count))").tag(tab)
+                        } else {
+                            Text(tab.rawValue).tag(tab)
+                        }
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+            }
+
+            if selectedTab == .cached || isPresentedAsSheet {
+                cachedContent
+            } else {
+                PrefetchQueueView()
+            }
+        }
+        .background(Color(UIColor.systemGroupedBackground))
+        .task {
+            await prefetchService.fetchQueueIfNeeded()
+        }
+    }
+
+    @ViewBuilder
+    private var cachedContent: some View {
         ZStack {
             Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all)
-            
+
             if viewModel.isLoading {
                 ProgressView("Loading Playlist...")
             } else if let error = viewModel.errorMessage {

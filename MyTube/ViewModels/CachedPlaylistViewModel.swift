@@ -16,20 +16,22 @@ class CachedPlaylistViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            // 1. Fetch all cached IDs
-            let cachedIds = try await cacheService.fetchAllCachedIds()
+            // 1. Fetch all cached items (with download timestamps)
+            let cachedItems = try await cacheService.fetchAllCachedItems()
             
             // 2. Filter out watched videos locally
-            let unwatchedIds = cachedIds.filter { videoId in
-                let isWatched = videoStatusManager.getStatus(videoId: videoId)?.isWatched ?? false
+            let unwatchedItems = cachedItems.filter { item in
+                let isWatched = videoStatusManager.getStatus(videoId: item.id)?.isWatched ?? false
                 return !isWatched
             }
             
-            if unwatchedIds.isEmpty {
+            if unwatchedItems.isEmpty {
                 self.videos = []
                 isLoading = false
                 return
             }
+            
+            let unwatchedIds = unwatchedItems.map { $0.id }
             
             // 3. Fetch video details for unwatched IDs
             // YouTube API allows maximum 50 IDs per request for videos list.
@@ -43,9 +45,24 @@ class CachedPlaylistViewModel: ObservableObject {
                 allFetchedVideos.append(contentsOf: fetchedChunk)
             }
             
-            // 4. Sort videos (e.g., newest first)
+            // 4. Sort videos by Download Date (newest first)
+            let cacheDateDict: [String: Date] = unwatchedItems.reduce(into: [:]) { result, item in
+                if let dateStr = item.cachedAt, let date = DateUtils.parseISOString(dateStr) {
+                    result[item.id] = date
+                }
+            }
+            
             allFetchedVideos.sort { (v1, v2) -> Bool in
-                guard let d1 = v1.snippet.publishedAt, let d2 = v2.snippet.publishedAt else { return false }
+                let d1 = cacheDateDict[v1.id] ?? Date.distantPast
+                let d2 = cacheDateDict[v2.id] ?? Date.distantPast
+                
+                // Fallback to publishedAt if download dates are exactly identical (or missing)
+                if d1 == d2 {
+                    let p1 = DateUtils.parseISOString(v1.snippet.publishedAt ?? "") ?? Date.distantPast
+                    let p2 = DateUtils.parseISOString(v2.snippet.publishedAt ?? "") ?? Date.distantPast
+                    return p1 > p2
+                }
+                
                 return d1 > d2
             }
             

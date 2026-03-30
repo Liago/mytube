@@ -93,6 +93,11 @@ class CacheStatusService: ObservableObject {
         return cachedVideoIds.contains(videoId)
     }
     
+    struct CachedItem: Decodable {
+        let id: String
+        let cachedAt: String?
+    }
+
     /// Fetches all cached IDs from the backend
     func fetchAllCachedIds() async throws -> [String] {
         let baseURL = "https://mytube-be.netlify.app"
@@ -121,5 +126,41 @@ class CacheStatusService: ObservableObject {
         result.found.forEach { self.cachedVideoIds.insert($0) }
         
         return result.found
+    }
+
+    /// Fetches all cached items from the backend, including download timestamps
+    func fetchAllCachedItems() async throws -> [CachedItem] {
+        let baseURL = "https://mytube-be.netlify.app"
+        
+        let url = URL(string: "\(baseURL)/.netlify/functions/check-cache")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(Secrets.apiSecret, forHTTPHeaderField: "x-api-key")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["ids": []])
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            print("CacheStatusService: Error. Server returned \(String(data: data, encoding: .utf8) ?? "nil")")
+            throw URLError(.badServerResponse)
+        }
+        
+        struct CacheItemsResponse: Decodable {
+            let found: [String]
+            let cachedItems: [CachedItem]?
+        }
+        
+        let result = try JSONDecoder().decode(CacheItemsResponse.self, from: data)
+        
+        // Update local cache state just in case
+        result.found.forEach { self.cachedVideoIds.insert($0) }
+        
+        // Return parsed objects if available (new backend), otherwise fallback to strings
+        if let items = result.cachedItems {
+            return items
+        } else {
+            return result.found.map { CachedItem(id: $0, cachedAt: nil) }
+        }
     }
 }

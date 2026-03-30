@@ -1,3 +1,9 @@
+## [1.27.0](https://github.com/Liago/mytube/compare/v1.26.1...v1.27.0) (2026-03-30)
+
+### Features
+
+* **playlist:** sort cached playlist by exact download date (LastModified) instead of publishedAt ([759858a](https://github.com/Liago/mytube/commit/759858a4b11c4e74e9a126a8fb2752d91b550322))
+
 ## [1.26.1](https://github.com/Liago/mytube/compare/v1.26.0...v1.26.1) (2026-03-30)
 
 ### Bug Fixes

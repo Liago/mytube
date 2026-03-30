@@ -48,6 +48,10 @@ exports.handler = async (event, context) => {
 				.filter(c => c.Key && c.Key.endsWith('_v2.m4a'))
 				.map(c => c.Key.replace('_v2.m4a', ''));
 				
+			const cachedItems = objects
+				.filter(c => c.Key && c.Key.endsWith('_v2.m4a'))
+				.map(c => ({ id: c.Key.replace('_v2.m4a', ''), cachedAt: c.LastModified }));
+				
 			return {
 				statusCode: 200,
 				headers: {
@@ -56,7 +60,7 @@ exports.handler = async (event, context) => {
 					"Access-Control-Allow-Headers": "Content-Type",
 					"Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 				},
-				body: JSON.stringify({ found, missing: [] }),
+				body: JSON.stringify({ found, missing: [], cachedItems }),
 			};
 		} catch (error) {
 			return { statusCode: 500, body: JSON.stringify({ error: "Failed to list objects: " + error.message }) };

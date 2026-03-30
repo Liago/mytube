@@ -42,8 +42,19 @@ exports.handler = async (event, context) => {
 	if (!videoIds.length) {
 		// Return all cached IDs if none provided
 		try {
-			const data = await s3.send(new ListObjectsV2Command({ Bucket: R2_BUCKET_NAME }));
-			const objects = data.Contents || [];
+			let objects = [];
+			let isTruncated = true;
+			let continuationToken = undefined;
+			while (isTruncated) {
+				const commandResult = await s3.send(new ListObjectsV2Command({ 
+					Bucket: R2_BUCKET_NAME,
+					ContinuationToken: continuationToken 
+				}));
+				objects = objects.concat(commandResult.Contents || []);
+				isTruncated = commandResult.IsTruncated;
+				continuationToken = commandResult.NextContinuationToken;
+			}
+			
 			const found = objects
 				.filter(c => c.Key && c.Key.endsWith('_v2.m4a'))
 				.map(c => c.Key.replace('_v2.m4a', ''));

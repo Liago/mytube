@@ -1,3 +1,9 @@
+## [1.27.1](https://github.com/Liago/mytube/compare/v1.27.0...v1.27.1) (2026-03-30)
+
+### Bug Fixes
+
+* **backend:** paginate R2 ListObjects to return all cached items ([1f856a0](https://github.com/Liago/mytube/commit/1f856a01d24069298edf95ae2d7196d4d6ad4236))
+
 ## [1.27.0](https://github.com/Liago/mytube/compare/v1.26.1...v1.27.0) (2026-03-30)
 
 ### Features

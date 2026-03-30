@@ -16,7 +16,7 @@ struct PrefetchQueueView: View {
             }
         }
         .task {
-            await prefetchService.fetchQueue()
+            await prefetchService.fetchQueueIfNeeded()
         }
         .refreshable {
             await prefetchService.fetchQueue()

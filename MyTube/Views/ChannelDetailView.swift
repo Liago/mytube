@@ -8,6 +8,7 @@ struct ChannelDetailView: View {
     @StateObject private var viewModel = ChannelDetailViewModel()
     @ObservedObject private var videoStatusManager = VideoStatusManager.shared
     @ObservedObject private var cacheService = CacheStatusService.shared
+    @ObservedObject private var prefetchService = PrefetchQueueService.shared
     @State private var itemToShare: PlaylistItem?
     
     // Convenience init for passing Subscription
@@ -154,6 +155,14 @@ struct ChannelDetailView: View {
                                                 .font(.caption2)
                                                 .fontWeight(.bold)
                                                 .foregroundColor(.green)
+                                        } else if prefetchService.isQueued(video.videoId) {
+                                            Image(systemName: "clock.arrow.circlepath")
+                                                .font(.caption2)
+                                                .foregroundColor(.orange)
+                                            Text("In coda")
+                                                .font(.caption2)
+                                                .fontWeight(.bold)
+                                                .foregroundColor(.orange)
                                         }
                                     }
                                     .task {
@@ -163,7 +172,39 @@ struct ChannelDetailView: View {
                                 
                                 Spacer()
                                 
-                                // Ellipsis removed as actions are now swipes
+                                Menu {
+                                    if !CacheStatusService.shared.isCached(video.videoId) && !prefetchService.isQueued(video.videoId) {
+                                        Button {
+                                            Task {
+                                                await prefetchService.addToQueue(item: PrefetchQueueItem(
+                                                    videoId: video.videoId,
+                                                    title: video.snippet.title,
+                                                    channelName: video.snippet.channelTitle ?? channelTitle,
+                                                    channelId: channelId,
+                                                    thumbnailURL: video.snippet.thumbnails?.high?.url ?? video.snippet.thumbnails?.medium?.url ?? video.snippet.thumbnails?.defaultThumbnail?.url,
+                                                    addedAt: ISO8601DateFormatter().string(from: Date())
+                                                ))
+                                            }
+                                        } label: {
+                                            Label("Aggiungi alla coda", systemImage: "arrow.down.circle")
+                                        }
+                                    } else if prefetchService.isQueued(video.videoId) {
+                                        Button(role: .destructive) {
+                                            Task {
+                                                await prefetchService.removeFromQueue(videoId: video.videoId)
+                                            }
+                                        } label: {
+                                            Label("Rimuovi dalla coda", systemImage: "minus.circle")
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "ellipsis")
+                                        .foregroundColor(.primary)
+                                        .padding(8)
+                                        .background(Color.gray.opacity(0.1))
+                                        .clipShape(Circle())
+                                        .contentShape(Circle())
+                                }
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)

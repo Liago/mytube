@@ -32,7 +32,9 @@ class PrefetchQueueService: ObservableObject {
     private init() {}
 
     func fetchQueue() async {
+        guard !isLoading else { return } // Prevent parallel executions
         isLoading = true
+        hasFetched = true // Mark as fetched immediately to prevent re-entrancy
         defer { isLoading = false }
 
         do {
@@ -55,7 +57,6 @@ class PrefetchQueueService: ObservableObject {
             let result = try JSONDecoder().decode(QueueResponse.self, from: data)
             self.queueItems = result.items
             self.queuedVideoIds = Set(result.items.map { $0.videoId })
-            self.hasFetched = true
             print("PrefetchQueueService: Fetched \(result.items.count) queue items")
 
         } catch {

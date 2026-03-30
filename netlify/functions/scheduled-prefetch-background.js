@@ -382,9 +382,16 @@ const prefetchHandler = async (event) => {
 				}
 			}
 
-			// Update queue on R2: remove processed items
-			const remainingItems = queueItems.filter(item => !processedIds.has(item.videoId));
+			// Update queue on R2: remove processed items by fetching fresh state first
+			// This prevents overwriting queue items added by iOS during the prefetch execution.
 			try {
+				const freshData = await s3.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: QUEUE_FILE_KEY }));
+				const freshBody = await freshData.Body.transformToString();
+				const freshQueue = JSON.parse(freshBody);
+				const currentItems = freshQueue.items || [];
+				
+				const remainingItems = currentItems.filter(item => !processedIds.has(item.videoId));
+				
 				await s3.send(new PutObjectCommand({
 					Bucket: R2_BUCKET_NAME,
 					Key: QUEUE_FILE_KEY,

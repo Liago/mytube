@@ -1,3 +1,9 @@
+## [1.26.1](https://github.com/Liago/mytube/compare/v1.26.0...v1.26.1) (2026-03-30)
+
+### Bug Fixes
+
+* **prefetch:** resolve queue looping, restore ellipsis menu, fix queue overwrite race ([ed0617a](https://github.com/Liago/mytube/commit/ed0617a0627cdff92a9b7fb119b4aab0bc4c8f61))
+
 ## [1.26.0](https://github.com/Liago/mytube/compare/v1.25.1...v1.26.0) (2026-03-30)
 
 ### Features

@@ -1,3 +1,9 @@
+## [1.29.0](https://github.com/Liago/mytube/compare/v1.28.0...v1.29.0) (2026-04-02)
+
+### Features
+
+* **playlist:** compact layout, oldest-first sort, auto-advance for cached playlist ([96246a6](https://github.com/Liago/mytube/commit/96246a64e8ec2b3589644e5bd7813feb8a733ab1))
+
 ## [1.28.0](https://github.com/Liago/mytube/compare/v1.27.1...v1.28.0) (2026-04-02)
 
 ### Features

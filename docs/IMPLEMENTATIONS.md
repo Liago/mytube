@@ -2,6 +2,15 @@
 
 ## 2 Aprile 2026
 
+### Prefetch Queue: sync multi-dispositivo
+- **sync-prefetch-queue.js**: il POST ora fa merge tra coda locale e remota invece di sovrascrivere ciecamente R2. Items aggiunti da un altro device dopo l'ultimo sync del client vengono preservati; items rimossi intenzionalmente vengono rispettati
+- **PrefetchQueueService.swift**: nuova property `lastSyncDate` per tracciare l'ultimo sync. Il client manda il timestamp dell'ultimo sync nel payload e aggiorna lo stato locale con la risposta merged dal server
+- **Problema risolto**: aggiungendo un video alla coda su iPhone, ora appare anche su iPad (e viceversa)
+
+### Sicurezza: rimozione screenshot con secrets da Git
+- Rimosso `Screenshot 2026-01-30 at 16.46.50.png` (contenente secrets CloudFlare R2) da tutta la history Git con `git filter-repo`
+- Aggiunto `Screenshot*.png` al `.gitignore`
+
 ### Cached Playlist: layout compatto e auto-advance
 - **CachedPlaylistView**: sostituito `VideoCardView` (card grandi con thumbnail 220px) con layout lista compatto — thumbnail 100x56, titolo `.footnote`, metadata `.caption2`, righe strette con divider
 - **CachedPlaylistViewModel**: ordinamento cambiato da newest-first per data di download a **oldest-first per data di pubblicazione** (`publishedAt`)

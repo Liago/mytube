@@ -1,3 +1,9 @@
+## [1.28.0](https://github.com/Liago/mytube/compare/v1.27.1...v1.28.0) (2026-04-02)
+
+### Features
+
+* **playlist:** sort items oldest-first and auto-advance to next track ([db105db](https://github.com/Liago/mytube/commit/db105db36369d91d6f8c10c70a2bcfffbf31f503))
+
 ## [1.27.1](https://github.com/Liago/mytube/compare/v1.27.0...v1.27.1) (2026-03-30)
 
 ### Bug Fixes

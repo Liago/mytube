@@ -138,45 +138,73 @@ struct CachedPlaylistView: View {
     
     private var videoListView: some View {
         ScrollView {
-            LazyVStack(spacing: 16) {
+            LazyVStack(spacing: 0) {
                 ForEach(viewModel.videos) { video in
-                    videoCard(for: video)
+                    Button(action: { playVideo(video) }) {
+                        HStack(spacing: 12) {
+                            AsyncImage(url: URL(string: video.snippet.thumbnails?.medium?.url ?? video.snippet.thumbnails?.defaultThumbnail?.url ?? "")) { image in
+                                image.resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            } placeholder: {
+                                ZStack {
+                                    Color.gray.opacity(0.3)
+                                    Image(systemName: "music.note")
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            .frame(width: 100, height: 56)
+                            .cornerRadius(6)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(video.snippet.title)
+                                    .font(.footnote)
+                                    .fontWeight(.semibold)
+                                    .lineLimit(2)
+                                    .foregroundColor(.primary)
+
+                                HStack(spacing: 4) {
+                                    Text(video.snippet.channelTitle ?? "")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                    if let date = video.snippet.publishedAt {
+                                        Text("• \(DateUtils.formatISOString(date))")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    Divider()
+                        .padding(.leading, 128)
                 }
             }
-            .padding(.vertical)
         }
         .refreshable {
             await viewModel.loadPlaylist()
         }
     }
     
-    @ViewBuilder
-    private func videoCard(for video: Video) -> some View {
-        VideoCardView(
-            videoId: video.id,
-            title: video.snippet.title,
-            channelName: video.snippet.channelTitle ?? "Unknown",
-            channelId: video.snippet.channelId ?? "",
-            date: DateUtils.parseISOString(video.snippet.publishedAt ?? ""),
-            duration: DateUtils.formatDuration(video.contentDetails.duration),
-            thumbnailURL: URL(string: video.snippet.thumbnails?.high?.url ?? video.snippet.thumbnails?.medium?.url ?? "")
-        ) {
-            playVideo(video)
-        } onChannelTap: { _ in
-            // Optional: navigate to channel
-        }
-        .padding(.horizontal)
-    }
-    
     private func playVideo(_ video: Video) {
-        AudioPlayerService.shared.playVideo(
-            videoId: video.id,
-            title: video.snippet.title,
-            author: video.snippet.channelTitle ?? "Unknown",
-            thumbnailURL: URL(string: video.snippet.thumbnails?.high?.url ?? ""),
-            publishedAt: video.snippet.publishedAt
-        )
-        
+        let queueItems = viewModel.videos.map { v in
+            QueueItem(
+                videoId: v.id,
+                title: v.snippet.title,
+                author: v.snippet.channelTitle ?? "Unknown",
+                thumbnailURL: URL(string: v.snippet.thumbnails?.high?.url ?? ""),
+                publishedAt: v.snippet.publishedAt
+            )
+        }
+        if let index = viewModel.videos.firstIndex(where: { $0.id == video.id }) {
+            AudioPlayerService.shared.setQueue(items: queueItems, startIndex: index)
+        }
+
         if isPresentedAsSheet {
             presentationMode.wrappedValue.dismiss()
         }

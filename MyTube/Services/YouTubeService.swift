@@ -128,7 +128,18 @@ class YouTubeService {
         let response: YouTubeResponse<PlaylistItem> = try await performRequest(endpoint: "/playlistItems", queryItems: queryItems)
         return (response.items, response.nextPageToken)
     }
-    
+
+    func fetchAllPlaylistItems(playlistId: String) async throws -> [PlaylistItem] {
+        var allItems: [PlaylistItem] = []
+        var pageToken: String? = nil
+        repeat {
+            let result = try await fetchPlaylistItems(playlistId: playlistId, pageToken: pageToken, maxResults: 50)
+            allItems.append(contentsOf: result.items)
+            pageToken = result.nextPageToken
+        } while pageToken != nil
+        return allItems
+    }
+
     func fetchSubscriptions() async throws -> [Subscription] {
         let queryItems = [
             URLQueryItem(name: "mine", value: "true"),

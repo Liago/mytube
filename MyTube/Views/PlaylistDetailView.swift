@@ -17,13 +17,18 @@ struct PlaylistDetailView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(items) { item in
                             Button(action: {
-                                AudioPlayerService.shared.playVideo(
-                                    videoId: item.videoId,
-                                    title: item.snippet.title,
-                                    author: item.snippet.channelTitle ?? "",
-                                    thumbnailURL: URL(string: item.snippet.thumbnails?.high?.url ?? ""),
-                                    publishedAt: item.snippet.publishedAt
-                                )
+                                let queueItems = items.map { i in
+                                    QueueItem(
+                                        videoId: i.videoId,
+                                        title: i.snippet.title,
+                                        author: i.snippet.channelTitle ?? "",
+                                        thumbnailURL: URL(string: i.snippet.thumbnails?.high?.url ?? ""),
+                                        publishedAt: i.snippet.publishedAt
+                                    )
+                                }
+                                if let index = items.firstIndex(where: { $0.id == item.id }) {
+                                    AudioPlayerService.shared.setQueue(items: queueItems, startIndex: index)
+                                }
                             }) {
                                 HStack(spacing: 16) {
                                     AsyncImage(url: URL(string: item.snippet.thumbnails?.medium?.url ?? item.snippet.thumbnails?.defaultThumbnail?.url ?? "")) { image in
@@ -93,7 +98,12 @@ struct PlaylistDetailView: View {
         .task {
             do {
                 if items.isEmpty {
-                     items = try await YouTubeService.shared.fetchPlaylistItems(playlistId: playlist.id).items
+                    let allItems = try await YouTubeService.shared.fetchAllPlaylistItems(playlistId: playlist.id)
+                    items = allItems.sorted { a, b in
+                        let dateA = DateUtils.parseISOString(a.snippet.publishedAt ?? "") ?? Date.distantPast
+                        let dateB = DateUtils.parseISOString(b.snippet.publishedAt ?? "") ?? Date.distantPast
+                        return dateA < dateB
+                    }
                 }
             } catch {
                 print("Error loading items: \(error)")

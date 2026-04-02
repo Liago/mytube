@@ -57,20 +57,50 @@ exports.handler = async (event, context) => {
 			};
 		}
 
-		// 4. Handle POST (Update Queue)
+		// 4. Handle POST (Merge & Update Queue)
 		if (event.httpMethod === "POST") {
-			const localQueue = JSON.parse(event.body);
+			const localPayload = JSON.parse(event.body);
+			const localItems = localPayload.items || [];
+			const clientLastSync = new Date(localPayload.lastUpdated || 0).getTime();
+
+			const remoteQueue = await getRemoteQueue();
+			const remoteItems = remoteQueue.items || [];
+
+			// Build local map by videoId
+			const localMap = {};
+			localItems.forEach(item => { localMap[item.videoId] = item; });
+
+			const mergedMap = {};
+
+			// Add all local items (client's current state)
+			for (const item of localItems) {
+				mergedMap[item.videoId] = item;
+			}
+
+			// Add remote items not in local — only if added after this client's last sync
+			for (const item of remoteItems) {
+				if (!localMap[item.videoId]) {
+					const itemAddedAt = new Date(item.addedAt).getTime();
+					if (itemAddedAt > clientLastSync) {
+						mergedMap[item.videoId] = item;
+					}
+				}
+			}
+
+			const mergedItems = Object.values(mergedMap);
+			const now = new Date().toISOString();
+			const mergedQueue = { items: mergedItems, lastUpdated: now };
 
 			await s3.send(new PutObjectCommand({
 				Bucket: R2_BUCKET_NAME,
 				Key: QUEUE_FILE_KEY,
-				Body: JSON.stringify(localQueue),
+				Body: JSON.stringify(mergedQueue),
 				ContentType: "application/json"
 			}));
 
 			return {
 				statusCode: 200,
-				body: JSON.stringify({ message: "Prefetch queue synced successfully", saved: localQueue })
+				body: JSON.stringify(mergedQueue)
 			};
 		}
 

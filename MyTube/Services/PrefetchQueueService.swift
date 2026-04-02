@@ -20,6 +20,7 @@ class PrefetchQueueService: ObservableObject {
     @Published var isLoading = false
 
     private var hasFetched = false
+    private var lastSyncDate: String?
 
     private var baseURL: String {
         #if targetEnvironment(simulator)
@@ -52,11 +53,13 @@ class PrefetchQueueService: ObservableObject {
 
             struct QueueResponse: Decodable {
                 let items: [PrefetchQueueItem]
+                let lastUpdated: String?
             }
 
             let result = try JSONDecoder().decode(QueueResponse.self, from: data)
             self.queueItems = result.items
             self.queuedVideoIds = Set(result.items.map { $0.videoId })
+            self.lastSyncDate = result.lastUpdated
             print("PrefetchQueueService: Fetched \(result.items.count) queue items")
 
         } catch {
@@ -109,16 +112,28 @@ class PrefetchQueueService: ObservableObject {
                         "addedAt": item.addedAt
                     ] as [String: String]
                 },
-                "lastUpdated": ISO8601DateFormatter().string(from: Date())
+                "lastUpdated": lastSyncDate ?? ISO8601DateFormatter().string(from: Date.distantPast)
             ]
 
             request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 print("PrefetchQueueService: Server error syncing queue")
                 return
+            }
+
+            // Update local state with merged result from server
+            struct SyncResponse: Decodable {
+                let items: [PrefetchQueueItem]?
+                let lastUpdated: String?
+            }
+            if let result = try? JSONDecoder().decode(SyncResponse.self, from: data),
+               let mergedItems = result.items {
+                self.queueItems = mergedItems
+                self.queuedVideoIds = Set(mergedItems.map { $0.videoId })
+                self.lastSyncDate = result.lastUpdated
             }
 
             print("PrefetchQueueService: Queue synced successfully (\(queueItems.count) items)")

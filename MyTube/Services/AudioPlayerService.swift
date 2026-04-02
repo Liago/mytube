@@ -4,6 +4,14 @@ import MediaPlayer
 import Combine
 import CoreMedia
 
+struct QueueItem {
+    let videoId: String
+    let title: String
+    let author: String
+    let thumbnailURL: URL?
+    let publishedAt: String?
+}
+
 @MainActor
 class AudioPlayerService: NSObject, ObservableObject {
     static let shared = AudioPlayerService()
@@ -31,7 +39,21 @@ class AudioPlayerService: NSObject, ObservableObject {
     @Published var duration: Double = 0
     @Published var playbackRate: Float = 1.0
 
-    @Published var playNext: Bool = false
+    // Queue state
+    @Published var queue: [QueueItem] = []
+    @Published var currentQueueIndex: Int? = nil
+
+    var hasQueue: Bool { !queue.isEmpty && currentQueueIndex != nil }
+    var hasNextTrack: Bool {
+        guard let index = currentQueueIndex else { return false }
+        return index < queue.count - 1
+    }
+    var hasPreviousTrack: Bool {
+        guard let index = currentQueueIndex else { return false }
+        return index > 0
+    }
+
+    private var isQueueNavigation = false
 
     // UI state
     @Published var isPlayerPresented: Bool = false
@@ -176,7 +198,61 @@ class AudioPlayerService: NSObject, ObservableObject {
 
     // MARK: - Playback
 
+    // MARK: - Queue Management
+
+    func setQueue(items: [QueueItem], startIndex: Int) {
+        self.queue = items
+        self.currentQueueIndex = startIndex
+        updateRemoteCommandState()
+        let item = items[startIndex]
+        isQueueNavigation = true
+        playVideo(videoId: item.videoId, title: item.title, author: item.author,
+                  thumbnailURL: item.thumbnailURL, publishedAt: item.publishedAt)
+        isQueueNavigation = false
+    }
+
+    func playNextTrack() {
+        guard let index = currentQueueIndex, index < queue.count - 1 else { return }
+        let nextIndex = index + 1
+        currentQueueIndex = nextIndex
+        updateRemoteCommandState()
+        let item = queue[nextIndex]
+        isQueueNavigation = true
+        playVideo(videoId: item.videoId, title: item.title, author: item.author,
+                  thumbnailURL: item.thumbnailURL, publishedAt: item.publishedAt)
+        isQueueNavigation = false
+    }
+
+    func playPreviousTrack() {
+        guard let index = currentQueueIndex, index > 0 else { return }
+        let prevIndex = index - 1
+        currentQueueIndex = prevIndex
+        updateRemoteCommandState()
+        let item = queue[prevIndex]
+        isQueueNavigation = true
+        playVideo(videoId: item.videoId, title: item.title, author: item.author,
+                  thumbnailURL: item.thumbnailURL, publishedAt: item.publishedAt)
+        isQueueNavigation = false
+    }
+
+    func clearQueue() {
+        queue = []
+        currentQueueIndex = nil
+        updateRemoteCommandState()
+    }
+
+    private func updateRemoteCommandState() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.nextTrackCommand.isEnabled = hasNextTrack
+        commandCenter.previousTrackCommand.isEnabled = hasPreviousTrack
+    }
+
+    // MARK: - Playback
+
     func playVideo(videoId: String, title: String, author: String, thumbnailURL: URL?, publishedAt: String? = nil) {
+        if !isQueueNavigation {
+            clearQueue()
+        }
         print("=== Starting playback for video: \(videoId) ===")
 
         // Ensure remote controls are receiving events
@@ -460,6 +536,11 @@ class AudioPlayerService: NSObject, ObservableObject {
                     duration: self.duration
                 )
             }
+
+            // Auto-advance to next track in queue
+            if self.hasNextTrack {
+                self.playNextTrack()
+            }
         }
     }
 
@@ -487,6 +568,7 @@ class AudioPlayerService: NSObject, ObservableObject {
     func stop() {
         cleanupPlayer()
         player = nil
+        clearQueue()
 
         isPlaying = false
         useFallbackPlayer = false
@@ -542,9 +624,22 @@ class AudioPlayerService: NSObject, ObservableObject {
 
         let commandCenter = MPRemoteCommandCenter.shared()
 
-        // Disable all commands first, then enable only what we need
+        // Next/Previous Track Commands (enabled dynamically when queue is active)
         commandCenter.nextTrackCommand.isEnabled = false
+        commandCenter.nextTrackCommand.removeTarget(nil)
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            DispatchQueue.main.async { self.playNextTrack() }
+            return .success
+        }
+
         commandCenter.previousTrackCommand.isEnabled = false
+        commandCenter.previousTrackCommand.removeTarget(nil)
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            DispatchQueue.main.async { self.playPreviousTrack() }
+            return .success
+        }
 
         // Play Command
         commandCenter.playCommand.isEnabled = true

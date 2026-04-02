@@ -27,3 +27,6 @@ Pods/
 cookies.json
 node_modules
 *-player-script.js
+
+# Screenshots (may contain secrets)
+Screenshot*.png

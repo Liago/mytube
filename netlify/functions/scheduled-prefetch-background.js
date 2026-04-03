@@ -63,7 +63,8 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 	}
 
 	const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-	const PLAYER_CLIENTS = ['tv_embedded', 'web_creator', 'mweb', 'android', 'ios', 'web', 'android_creator'];
+	// 'default' = let yt-dlp pick (currently uses android_vr, which reliably serves format 140)
+	const PLAYER_CLIENTS = ['default', 'mweb', 'android', 'ios', 'tv_embedded', 'web'];
 
 	const executeStrategy = async (useCookies, playerClient) => {
 		return new Promise((resolve, reject) => {
@@ -81,7 +82,9 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 				args.push('--cookies', cookiesPath);
 			}
 
+			if (playerClient !== 'default') {
 			args.push('--extractor-args', `youtube:player_client=${playerClient}`);
+		}
 			args.push('--user-agent', CHROME_UA);
 			args.push('--compat-options', '2025');
 			// Adaptive intra-request delays: more conservative during peak hours
@@ -127,12 +130,12 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 
 	const strategies = [];
 	if (hasCookies) {
-		strategies.push({ useCookies: true, playerClient: 'android_creator' });
-		strategies.push({ useCookies: true, playerClient: 'web' });
-		strategies.push({ useCookies: true, playerClient: 'tv_embedded' });
-		strategies.push({ useCookies: true, playerClient: 'ios' });
-		strategies.push({ useCookies: true, playerClient: 'android' });
+		strategies.push({ useCookies: true, playerClient: 'default' });
 		strategies.push({ useCookies: true, playerClient: 'mweb' });
+		strategies.push({ useCookies: true, playerClient: 'android' });
+		strategies.push({ useCookies: true, playerClient: 'ios' });
+		strategies.push({ useCookies: true, playerClient: 'tv_embedded' });
+		strategies.push({ useCookies: true, playerClient: 'web' });
 	}
 	
 	// Fallback to cookie-less strategies if all authenticated ones fail or no cookies are present
@@ -157,7 +160,7 @@ const runYtDlp = async (url, outputPath, cookiesPath, ctx = { skipProxy: false }
 			if (err.message.includes('Proxy rate limit detected') || err.message.includes('Proxy error detected')) {
 				if (ctx.logger) ctx.logger.info(`Proxy disabled globally. Retrying same strategy without proxy...`);
 				i--; // Retry the same strategy without proxy
-			} else if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you') || err.message.includes('Requested format is not available')) {
+			} else if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you')) {
 				if (ctx.logger) ctx.logger.warn(`Bot-check/shadowban detected. Aborting further strategies.`);
 				break; // Fail fast
 			} else if (err.message.includes('live event will begin') || err.message.includes('Premieres in') || err.message.includes('This video is not available') || err.message.includes('Video unavailable') || err.message.includes('is not a valid URL') || err.message.includes('Private video')) {
@@ -314,7 +317,7 @@ const prefetchHandler = async (event) => {
 							} else {
 								logger.error(`Download failed for queue item ${videoId}: ${downloadErr.message}`);
 
-								if (downloadErr.message.includes('Sign in to confirm') || downloadErr.message.includes('confirm you') || downloadErr.message.includes('Requested format is not available')) {
+								if (downloadErr.message.includes('Sign in to confirm') || downloadErr.message.includes('confirm you')) {
 									consecutiveBotChecks++;
 
 									if (consecutiveBotChecks <= MAX_BOT_RETRIES) {
@@ -469,7 +472,7 @@ const prefetchHandler = async (event) => {
 								logger.error(`Download failed for ${videoId}: ${downloadErr.message}`);
 
 								// Detect bot-check: retry with backoff, then abort if persistent
-								if (downloadErr.message.includes('Sign in to confirm') || downloadErr.message.includes('confirm you') || downloadErr.message.includes('Requested format is not available')) {
+								if (downloadErr.message.includes('Sign in to confirm') || downloadErr.message.includes('confirm you')) {
 									consecutiveBotChecks++;
 
 									if (consecutiveBotChecks <= MAX_BOT_RETRIES) {
@@ -539,7 +542,7 @@ const prefetchHandler = async (event) => {
 			} catch (err) {
 				logger.error(`Error processing channel ${channelId}: ${err.message}`);
 				// Detect bot-check at the channel/RSS level too
-				if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you') || err.message.includes('Requested format is not available')) {
+				if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you')) {
 					logger.warn('Bot-check / Shadowban detected at channel level! Aborting run to preserve cookies.');
 					botDetected = true;
 					newNotifications.push({

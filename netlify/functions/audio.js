@@ -176,8 +176,9 @@ exports.handler = async (event, context) => {
 			// Realistic User-Agent to avoid fingerprinting as a bot
 			const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-			// Player client strategies to try in order (each has different bot detection thresholds)
-			const PLAYER_CLIENTS = ['tv_embedded', 'web_creator', 'mweb', 'android', 'ios', 'web', 'android_creator'];
+			// Player client strategies to try in order
+			// 'default' = let yt-dlp pick (currently uses android_vr, which reliably serves format 140)
+			const PLAYER_CLIENTS = ['default', 'mweb', 'android', 'ios', 'tv_embedded', 'web'];
 
 			// Helper function to run yt-dlp with a specific strategy
 			const runYtDlp = async (useCookies, playerClient, ctx = { skipProxy: false }) => {
@@ -198,8 +199,10 @@ exports.handler = async (event, context) => {
 					args.push('--cookies', activeCookiePath);
 				}
 
-				// Player client impersonation
-				args.push('--extractor-args', `youtube:player_client=${playerClient}`);
+				// Player client impersonation (skip for 'default' to let yt-dlp choose)
+				if (playerClient !== 'default') {
+					args.push('--extractor-args', `youtube:player_client=${playerClient}`);
+				}
 
 				// Realistic User-Agent
 				args.push('--user-agent', CHROME_UA);
@@ -256,13 +259,13 @@ exports.handler = async (event, context) => {
 			const strategies = [];
 
 			if (hasCookies) {
-				// Aligned with scheduled-prefetch: android_creator first (most reliable)
-				strategies.push({ useCookies: true, playerClient: 'android_creator' });
-				strategies.push({ useCookies: true, playerClient: 'web' });
-				strategies.push({ useCookies: true, playerClient: 'tv_embedded' });
-				strategies.push({ useCookies: true, playerClient: 'ios' });
-				strategies.push({ useCookies: true, playerClient: 'android' });
+				// 'default' lets yt-dlp pick the best client (android_vr) — most reliable for format 140
+				strategies.push({ useCookies: true, playerClient: 'default' });
 				strategies.push({ useCookies: true, playerClient: 'mweb' });
+				strategies.push({ useCookies: true, playerClient: 'android' });
+				strategies.push({ useCookies: true, playerClient: 'ios' });
+				strategies.push({ useCookies: true, playerClient: 'tv_embedded' });
+				strategies.push({ useCookies: true, playerClient: 'web' });
 			}
 			
 			// Always add cookie-less strategies as a fallback
@@ -293,7 +296,7 @@ exports.handler = async (event, context) => {
 						console.log(`Proxy disabled globally for this video. Retrying same strategy without proxy...`);
 						i--; // Retry the same strategy without proxy
 						attemptCount--; // Revert the attempt counter so the log is consistent
-					} else if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you') || err.message.includes('Requested format is not available')) {
+					} else if (err.message.includes('Sign in to confirm') || err.message.includes('confirm you')) {
 						console.log(`Bot-check/shadowban detected. Aborting further strategies.`);
 						break; // Fail fast
 					} else if (err.message.includes('live event will begin') || err.message.includes('Premieres in') || err.message.includes('This video is not available') || err.message.includes('Video unavailable') || err.message.includes('is not a valid URL') || err.message.includes('Private video')) {
@@ -380,7 +383,7 @@ exports.handler = async (event, context) => {
 			};
 		} catch (error) {
 			logger.error(`Error processing ${videoId}: ${error.message}`);
-			const isShadowban = error.message.includes('Sign in to confirm') || error.message.includes('confirm you') || error.message.includes('Requested format is not available');
+			const isShadowban = error.message.includes('Sign in to confirm') || error.message.includes('confirm you');
 
 			return {
 				statusCode: isShadowban ? 403 : 500,

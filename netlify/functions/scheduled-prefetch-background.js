@@ -277,11 +277,11 @@ const prefetchHandler = async (event) => {
 				// Check if already cached
 				try {
 					await s3.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: r2Key }));
-					logger.info(`Queue item ${videoId} already cached. Removing from queue.`);
+					logger.info(`Queue item "${queueItem.title || videoId}" already cached. Removing from queue.`);
 					processedIds.add(videoId);
 				} catch (e) {
 					if (e.name === 'NotFound' || e.name === '404') {
-						logger.info(`Queue item ${videoId} not cached. Downloading...`);
+						logger.info(`Queue item "${queueItem.title || videoId}" [${queueItem.channelName || 'Unknown'}] not cached. Downloading...`);
 
 						try {
 							const tempPath = `/tmp/${videoId}.m4a`;
@@ -298,7 +298,7 @@ const prefetchHandler = async (event) => {
 									ContentType: 'audio/mp4',
 									ContentLength: stats.size
 								}));
-								logger.info(`Uploaded queue item ${videoId} to R2.`);
+								logger.info(`Uploaded queue item "${queueItem.title || videoId}" to R2.`);
 
 								newNotifications.push({
 									id: videoId,
@@ -312,10 +312,10 @@ const prefetchHandler = async (event) => {
 							processedIds.add(videoId);
 						} catch (downloadErr) {
 							if (downloadErr.message.startsWith("SKIP:")) {
-								logger.warn(`Skipping queue item ${videoId}: ${downloadErr.message}`);
+								logger.warn(`Skipping queue item "${queueItem.title || videoId}": ${downloadErr.message}`);
 								processedIds.add(videoId); // Remove non-downloadable items from queue
 							} else {
-								logger.error(`Download failed for queue item ${videoId}: ${downloadErr.message}`);
+								logger.error(`Download failed for queue item "${queueItem.title || videoId}": ${downloadErr.message}`);
 
 								if (downloadErr.message.includes('Sign in to confirm') || downloadErr.message.includes('confirm you')) {
 									consecutiveBotChecks++;
@@ -326,7 +326,7 @@ const prefetchHandler = async (event) => {
 										await sleep(backoffSec * 1000, backoffSec * 1000);
 
 										try {
-											logger.info(`Retrying queue item ${videoId} after backoff...`);
+											logger.info(`Retrying queue item "${queueItem.title || videoId}" after backoff...`);
 											const tempPath = `/tmp/${videoId}.m4a`;
 											const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 											await runYtDlp(videoUrl, tempPath, fs.existsSync(cookiesPath) ? cookiesPath : null, runCtx);
@@ -341,7 +341,7 @@ const prefetchHandler = async (event) => {
 													ContentType: 'audio/mp4',
 													ContentLength: stats.size
 												}));
-												logger.info(`Uploaded queue item ${videoId} to R2 (after retry).`);
+												logger.info(`Uploaded queue item "${queueItem.title || videoId}" to R2 (after retry).`);
 												newNotifications.push({
 													id: videoId,
 													title: queueItem.title || 'Unknown Title',
@@ -415,9 +415,10 @@ const prefetchHandler = async (event) => {
 			if (botDetected) break;
 
 			const channelId = shuffledChannels[ci];
-			logger.info(`Scanning channel: ${channelId}`);
 			try {
 				const feed = await parser.parseURL(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`);
+				const channelName = feed.title || channelId;
+				logger.info(`Scanning channel: ${channelName}`);
 
 				// Adaptive: fewer videos per channel during peak hours
 				const videosToCheck = feed.items.slice(0, VIDEOS_PER_CHANNEL);
@@ -432,10 +433,10 @@ const prefetchHandler = async (event) => {
 					// Check availability
 					try {
 						await s3.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: r2Key }));
-						logger.info(`Video ${videoId} already exists. Skipping.`);
+						logger.info(`Video "${video.title}" already exists. Skipping.`);
 					} catch (e) {
 						if (e.name === 'NotFound' || e.name === '404') {
-							logger.info(`Video ${videoId} missing. Downloading...`);
+							logger.info(`Video "${video.title}" missing. Downloading...`);
 
 							try {
 								// Download
@@ -453,7 +454,7 @@ const prefetchHandler = async (event) => {
 										ContentType: 'audio/mp4',
 										ContentLength: stats.size
 									}));
-									logger.info(`Uploaded ${videoId} to R2.`);
+									logger.info(`Uploaded "${video.title}" to R2.`);
 
 									newNotifications.push({
 										id: videoId,
@@ -467,9 +468,9 @@ const prefetchHandler = async (event) => {
 							} catch (downloadErr) {
 								// Non-downloadable videos (live, premiere, unavailable) — skip to next video
 								if (downloadErr.message.startsWith("SKIP:")) {
-									logger.warn(`Skipping video ${videoId}: ${downloadErr.message}`);
+									logger.warn(`Skipping video "${video.title}": ${downloadErr.message}`);
 								} else {
-								logger.error(`Download failed for ${videoId}: ${downloadErr.message}`);
+								logger.error(`Download failed for "${video.title}": ${downloadErr.message}`);
 
 								// Detect bot-check: retry with backoff, then abort if persistent
 								if (downloadErr.message.includes('Sign in to confirm') || downloadErr.message.includes('confirm you')) {
@@ -482,7 +483,7 @@ const prefetchHandler = async (event) => {
 										await sleep(backoffSec * 1000, backoffSec * 1000);
 
 										try {
-											logger.info(`Retrying ${videoId} after backoff...`);
+											logger.info(`Retrying "${video.title}" after backoff...`);
 											await runYtDlp(video.link, tempPath, fs.existsSync(cookiesPath) ? cookiesPath : null, runCtx);
 
 											// Retry succeeded!
@@ -496,7 +497,7 @@ const prefetchHandler = async (event) => {
 													ContentType: 'audio/mp4',
 													ContentLength: stats.size
 												}));
-												logger.info(`Uploaded ${videoId} to R2 (after retry).`);
+												logger.info(`Uploaded "${video.title}" to R2 (after retry).`);
 												newNotifications.push({
 													id: videoId,
 													title: video.title || 'Unknown Title',

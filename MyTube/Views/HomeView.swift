@@ -138,7 +138,8 @@ struct HomeView: View {
                     title: item.snippet.title,
                     author: item.snippet.channelTitle ?? "",
                     thumbnailURL: URL(string: item.snippet.thumbnails?.high?.url ?? ""),
-                    publishedAt: item.snippet.publishedAt
+                    publishedAt: item.snippet.publishedAt,
+                    durationSeconds: DateUtils.parseDurationToSeconds(item.contentDetails.duration)
                 )
             },
             onChannelTap: { channelId in

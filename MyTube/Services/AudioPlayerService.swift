@@ -10,11 +10,13 @@ struct QueueItem {
     let author: String
     let thumbnailURL: URL?
     let publishedAt: String?
+    let durationSeconds: Double?
 }
 
 @MainActor
 class AudioPlayerService: NSObject, ObservableObject {
     static let shared = AudioPlayerService()
+    private static let playbackRateKey = "MyTube_PlaybackRate"
 
     // Native AVPlayer - the sole playback engine
     private var player: AVPlayer?
@@ -68,6 +70,9 @@ class AudioPlayerService: NSObject, ObservableObject {
     private var pendingResumeProgress: Double?
     private var hasResumed: Bool = false
 
+    // Duration correction (YouTube API duration as source of truth)
+    private var expectedDuration: Double?
+
     // Progress tracking
     private var progressTimer: AnyCancellable?
 
@@ -80,6 +85,10 @@ class AudioPlayerService: NSObject, ObservableObject {
         setupRemoteTransportControls()
         setupInterruptionHandling()
         setupBackgroundHandlers()
+        let savedRate = UserDefaults.standard.float(forKey: AudioPlayerService.playbackRateKey)
+        if savedRate > 0 {
+            self.playbackRate = savedRate
+        }
     }
 
     // MARK: - Audio Session
@@ -207,7 +216,8 @@ class AudioPlayerService: NSObject, ObservableObject {
         let item = items[startIndex]
         isQueueNavigation = true
         playVideo(videoId: item.videoId, title: item.title, author: item.author,
-                  thumbnailURL: item.thumbnailURL, publishedAt: item.publishedAt)
+                  thumbnailURL: item.thumbnailURL, publishedAt: item.publishedAt,
+                  durationSeconds: item.durationSeconds)
         isQueueNavigation = false
     }
 
@@ -219,7 +229,8 @@ class AudioPlayerService: NSObject, ObservableObject {
         let item = queue[nextIndex]
         isQueueNavigation = true
         playVideo(videoId: item.videoId, title: item.title, author: item.author,
-                  thumbnailURL: item.thumbnailURL, publishedAt: item.publishedAt)
+                  thumbnailURL: item.thumbnailURL, publishedAt: item.publishedAt,
+                  durationSeconds: item.durationSeconds)
         isQueueNavigation = false
     }
 
@@ -231,7 +242,8 @@ class AudioPlayerService: NSObject, ObservableObject {
         let item = queue[prevIndex]
         isQueueNavigation = true
         playVideo(videoId: item.videoId, title: item.title, author: item.author,
-                  thumbnailURL: item.thumbnailURL, publishedAt: item.publishedAt)
+                  thumbnailURL: item.thumbnailURL, publishedAt: item.publishedAt,
+                  durationSeconds: item.durationSeconds)
         isQueueNavigation = false
     }
 
@@ -249,7 +261,7 @@ class AudioPlayerService: NSObject, ObservableObject {
 
     // MARK: - Playback
 
-    func playVideo(videoId: String, title: String, author: String, thumbnailURL: URL?, publishedAt: String? = nil) {
+    func playVideo(videoId: String, title: String, author: String, thumbnailURL: URL?, publishedAt: String? = nil, durationSeconds: Double? = nil) {
         if !isQueueNavigation {
             clearQueue()
         }
@@ -264,9 +276,11 @@ class AudioPlayerService: NSObject, ObservableObject {
         self.currentAuthor = author
         self.currentVideoDate = publishedAt
         self.currentVideoId = videoId
-        self.playbackRate = 1.0
+        let savedRate = UserDefaults.standard.float(forKey: AudioPlayerService.playbackRateKey)
+        self.playbackRate = savedRate > 0 ? savedRate : 1.0
         self.currentTime = 0
         self.duration = 0
+        self.expectedDuration = durationSeconds
         self.isPlayerPresented = true
         self.isLoadingStream = true
         self.isPlaying = false
@@ -419,6 +433,18 @@ class AudioPlayerService: NSObject, ObservableObject {
         }
     }
 
+    private func resolvedDuration(avPlayerDuration: Double) -> Double {
+        guard let expected = expectedDuration, expected > 0 else {
+            return avPlayerDuration
+        }
+        let ratio = avPlayerDuration / expected
+        if ratio >= 1.8 && ratio <= 2.2 {
+            print("Duration correction: AVPlayer=\(avPlayerDuration)s, expected=\(expected)s, ratio=\(String(format: "%.2f", ratio)). Using expected.")
+            return expected
+        }
+        return avPlayerDuration
+    }
+
     private func handleItemStatusChange(_ item: AVPlayerItem) {
         switch item.status {
         case .readyToPlay:
@@ -433,8 +459,9 @@ class AudioPlayerService: NSObject, ObservableObject {
             // Update duration if available from item
             let dur = item.duration.seconds
             if dur.isFinite && dur > 0 {
-                if duration == 0 || dur < duration {
-                    duration = dur
+                let resolved = resolvedDuration(avPlayerDuration: dur)
+                if duration == 0 || resolved < duration {
+                    duration = resolved
                 }
             }
 
@@ -483,9 +510,9 @@ class AudioPlayerService: NSObject, ObservableObject {
             self.currentTime = seconds
 
             if let dur = self.player?.currentItem?.duration.seconds, dur.isFinite && dur > 0 {
-                // Update duration from player if we don't have it or player's is more accurate
-                if self.duration == 0 || dur < self.duration {
-                    self.duration = dur
+                let resolved = self.resolvedDuration(avPlayerDuration: dur)
+                if self.duration == 0 || resolved < self.duration {
+                    self.duration = resolved
                 }
 
                 // Handle pending resume
@@ -578,7 +605,6 @@ class AudioPlayerService: NSObject, ObservableObject {
         coverArtURL = nil
         currentTime = 0
         duration = 0
-        playbackRate = 1.0
 
         // Clear now playing info
         let nowPlayingCenter = MPNowPlayingInfoCenter.default()
@@ -603,6 +629,7 @@ class AudioPlayerService: NSObject, ObservableObject {
 
     func setPlaybackRate(_ rate: Float) {
         self.playbackRate = rate
+        UserDefaults.standard.set(rate, forKey: AudioPlayerService.playbackRateKey)
         if let player = player, isPlaying {
             player.rate = rate
         }
@@ -835,15 +862,12 @@ class AudioPlayerService: NSObject, ObservableObject {
     private func saveCurrentProgress() {
         guard let videoId = currentVideoId,
               let player = player,
-              let item = player.currentItem,
-              item.duration.seconds.isFinite,
-              item.duration.seconds > 0 else { return }
+              duration > 0 else { return }
 
         let pos = player.currentTime().seconds
         guard pos.isFinite else { return }
 
-        let dur = item.duration.seconds
-        VideoStatusManager.shared.saveProgress(videoId: videoId, progress: pos, duration: dur)
+        VideoStatusManager.shared.saveProgress(videoId: videoId, progress: pos, duration: duration)
     }
 
     /// Sync published time/duration from AVPlayer
@@ -853,8 +877,8 @@ class AudioPlayerService: NSObject, ObservableObject {
         if seconds.isFinite {
             self.currentTime = seconds
         }
-        if let dur = player.currentItem?.duration.seconds, dur.isFinite {
-            self.duration = dur
+        if let dur = player.currentItem?.duration.seconds, dur.isFinite, dur > 0 {
+            self.duration = resolvedDuration(avPlayerDuration: dur)
         }
 
         // Update isPlaying based on actual player state

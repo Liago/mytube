@@ -198,7 +198,8 @@ struct CachedPlaylistView: View {
                 title: v.snippet.title,
                 author: v.snippet.channelTitle ?? "Unknown",
                 thumbnailURL: URL(string: v.snippet.thumbnails?.high?.url ?? ""),
-                publishedAt: v.snippet.publishedAt
+                publishedAt: v.snippet.publishedAt,
+                durationSeconds: DateUtils.parseDurationToSeconds(v.contentDetails.duration)
             )
         }
         if let index = viewModel.videos.firstIndex(where: { $0.id == video.id }) {

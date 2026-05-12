@@ -23,7 +23,8 @@ struct PlaylistDetailView: View {
                                         title: i.snippet.title,
                                         author: i.snippet.channelTitle ?? "",
                                         thumbnailURL: URL(string: i.snippet.thumbnails?.high?.url ?? ""),
-                                        publishedAt: i.snippet.publishedAt
+                                        publishedAt: i.snippet.publishedAt,
+                                        durationSeconds: nil
                                     )
                                 }
                                 if let index = items.firstIndex(where: { $0.id == item.id }) {

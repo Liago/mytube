@@ -70,4 +70,17 @@ struct DateUtils {
             return String(format: "%d:%02d", minutes, seconds)
         }
     }
+
+    static func parseDurationToSeconds(_ isoDuration: String) -> Double {
+        let pattern = "PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return 0 }
+        let nsString = isoDuration as NSString
+        let results = regex.matches(in: isoDuration, range: NSRange(location: 0, length: nsString.length))
+        guard let match = results.first else { return 0 }
+        var hours = 0, minutes = 0, seconds = 0
+        if let hRange = Range(match.range(at: 1), in: isoDuration) { hours = Int(isoDuration[hRange]) ?? 0 }
+        if let mRange = Range(match.range(at: 2), in: isoDuration) { minutes = Int(isoDuration[mRange]) ?? 0 }
+        if let sRange = Range(match.range(at: 3), in: isoDuration) { seconds = Int(isoDuration[sRange]) ?? 0 }
+        return Double(hours * 3600 + minutes * 60 + seconds)
+    }
 }

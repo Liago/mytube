@@ -72,6 +72,7 @@ class AudioPlayerService: NSObject, ObservableObject {
 
     // Duration correction (YouTube API duration as source of truth)
     private var expectedDuration: Double?
+    private var endHandled: Bool = false
 
     // Progress tracking
     private var progressTimer: AnyCancellable?
@@ -281,6 +282,7 @@ class AudioPlayerService: NSObject, ObservableObject {
         self.currentTime = 0
         self.duration = 0
         self.expectedDuration = durationSeconds
+        self.endHandled = false
         self.isPlayerPresented = true
         self.isLoadingStream = true
         self.isPlaying = false
@@ -509,6 +511,11 @@ class AudioPlayerService: NSObject, ObservableObject {
 
             self.currentTime = seconds
 
+            if !self.endHandled, self.duration > 0, seconds >= self.duration - 0.5 {
+                self.handlePlaybackEnded()
+                return
+            }
+
             if let dur = self.player?.currentItem?.duration.seconds, dur.isFinite && dur > 0 {
                 let resolved = self.resolvedDuration(avPlayerDuration: dur)
                 if self.duration == 0 || resolved < self.duration {
@@ -549,25 +556,32 @@ class AudioPlayerService: NSObject, ObservableObject {
             object: player?.currentItem,
             queue: .main
         ) { [weak self] _ in
-            guard let self = self else { return }
-            print("Playback ended")
-            self.isPlaying = false
-            self.updateNowPlayingInfo()
-            self.stopProgressTracking()
+            self?.handlePlaybackEnded()
+        }
+    }
 
-            // Mark video as fully watched
-            if let videoId = self.currentVideoId, self.duration > 0 {
-                VideoStatusManager.shared.saveProgress(
-                    videoId: videoId,
-                    progress: self.duration,
-                    duration: self.duration
-                )
-            }
+    private func handlePlaybackEnded() {
+        guard !endHandled else { return }
+        endHandled = true
+        print("Playback ended")
 
-            // Auto-advance to next track in queue
-            if self.hasNextTrack {
-                self.playNextTrack()
-            }
+        player?.pause()
+        isPlaying = false
+        updateNowPlayingInfo()
+        stopProgressTracking()
+
+        // Mark video as fully watched
+        if let videoId = currentVideoId, duration > 0 {
+            VideoStatusManager.shared.saveProgress(
+                videoId: videoId,
+                progress: duration,
+                duration: duration
+            )
+        }
+
+        // Auto-advance to next track in queue
+        if hasNextTrack {
+            playNextTrack()
         }
     }
 
